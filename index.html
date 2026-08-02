@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+    <title>GROOM AI</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+
+
+<div class="app">
+
+
+    <div class="aurora">
+        <div class="blob blob1"></div>
+        <div class="blob blob2"></div>
+        <div class="blob blob3"></div>
+    </div>
+    
+    <div class="sidebar" id="sidebar">
+
+        <button id="backBtn">←</button>
+    
+        <button id="newChatBtn" onclick="newChat()">
+            ➕ New Chat
+        </button>
+    
+        <div id="chatList"></div>
+    
+    </div>
+
+
+    <header class="header">
+
+        <button class="menu-btn" id="menuBtn">☰</button>
+    
+        <div class="left">
+    
+            <div class="logo">🚀</div>
+    
+            <div>
+    
+                <h2>GROOM AI</h2>
+    
+                <span>🟢 Online</span>
+    
+            </div>
+    
+        </div>
+    
+    </header>
+
+    <div class="chat-container">
+
+        <main id="chat-box">
+    
+            <div id="welcome" class="welcome">
+    
+                <div class="welcome-logo" id="welcomeRocket">🚀</div>
+    
+                <h1>Welcome to GROOM AI</h1>
+    
+                <p>Ask anything. I'm always ready to help.</p>
+    
+            </div>
+    
+        </main>
+    
+    </div>
+
+    <footer id="input-area" class="input-area">
+
+        <div class="input-wrapper">
+    
+            <div id="imagePreviewContainer"></div>
+    
+            <div class="composer">
+    
+                <label for="fileInput" id="attachBtn">📎</label>
+    
+                <input
+                    type="file"
+                    id="fileInput"
+                    accept="image/*,.pdf,application/pdf"
+                    hidden
+                >
+    
+                <input
+                    id="message"
+                    type="text"
+                    placeholder="Message GROOM AI..."
+                    autocomplete="off"
+                >
+    
+                <button id="sendBtn">➤</button>
+    
+            </div>
+    
+        </div>
+    
+    </footer>
+
+    
+</div>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+
+<div id="cursor-glow"></div>
+
+</body>
+</html>
