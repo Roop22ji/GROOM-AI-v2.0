@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify, session
 import requests
 import secrets
 from duckduckgo_search import DDGS
+from ai_image_generator import generate_ai_image
 import time
 import re
 import io
@@ -70,25 +71,64 @@ def web_search(query):
         return f"Search Error: {e}"
 
 def clean_image_query(text):
+
     text = text.lower()
 
-    words = [
-        "show me",
-        "show",
-        "image of",
+    phrases = [
+        
+        "give me a picture of",
+        "give me picture of",
+        "give me an image of",
+        "give me image of",
+        "give me a photo of",
+        "give me photo of",
+        "give me images of",
+        "give me pictures of",
+        "give me",
+        
+        "show me images of",
+        "show me image of",
+        "show images of",
+        "show image of",
+        "show me photos of",
+        "show me photo of",
+        "show me pictures of",
+        "show me picture of",
         "images of",
-        "photo of",
+        "image of",
         "photos of",
+        "photo of",
+        "pictures of",
         "picture of",
-        "pictures of"
+        "show me",
+        "show"
+
+        "show me images of",
+        "show me image of",
+        "show images of",
+        "show image of",
+        "show me photos of",
+        "show me photo of",
+        "show me pictures of",
+        "show me picture of",
+        "images of",
+        "image of",
+        "photos of",
+        "photo of",
+        "pictures of",
+        "picture of",
+        "show me",
+        "show"
     ]
 
-    for w in words:
-        text = text.replace(w, "")
+    for phrase in phrases:
+        text = text.replace(phrase, "")
 
+    text = text.replace("a ", "")
     return text.strip()
 
 def image_search(query):
+    print("Searching for:", query)
 
     url = "https://pixabay.com/api/"
 
@@ -96,9 +136,10 @@ def image_search(query):
         "key": PIXABAY_API_KEY,
         "q": query,
         "image_type": "photo",
-        "per_page": 4
+        "per_page": 4,
+        "safesearch": "true",
+        "order": "popular"
     }
-
     try:
 
         response = requests.get(url, params=params)
@@ -184,8 +225,6 @@ def save_chat():
 
 
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={API_KEY}"
-
-
 
 @app.route("/")
 def home():
@@ -479,92 +518,129 @@ Do not mention any limitations about displaying images.
 
     print("API Response Time:", round(time.time() - start, 2), "seconds")
     if response.status_code == 200:
-        data = response.json()
-        reply = data["candidates"][0]["content"]["parts"][0]["text"]
 
-        IMAGE_KEYWORDS = [
-            "image",
-            "images",
-            "photo",
-            "photos",
-            "picture",
-            "pictures",
-            "show",
-            "show me",
-            "wallpaper",
-            "logo"
-        ]
+        try:
+            data = response.json()
 
-        query = user_message.lower()
+            print("GEMINI RESPONSE:")
+            print(data)
 
-        need_images = any(word in query for word in IMAGE_KEYWORDS)
+            if "candidates" not in data:
+                return jsonify({
+                    "reply": "⚠️ Gemini did not return an answer.",
+                    "images": []
+                })
 
-        if need_images:
-            search_query = user_message
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+            IMAGE_KEYWORDS = [
+                "image",
+                "images",
+                "photo",
+                "photos",
+                "picture",
+                "pictures",
+                "show me",
+                "show",
+                "wallpaper",
+                "logo"
+            ]
 
-            for word in IMAGE_KEYWORDS:
-                search_query = search_query.replace(word, "")
+            query = user_message.lower()
 
-            search_query = search_query.replace("of", "").strip()
+            need_images = any(word in query for word in IMAGE_KEYWORDS)
+            
 
-            images = image_search(search_query)
-        else:
+            print("need_images =", need_images)
+            print("user_message =", user_message)
+
             images = []
 
-        if images:
-            prompt += """
+            if need_images:
 
-        IMPORTANT:
+                print("ENTERED IMAGE BLOCK")
 
-        The application will automatically display relevant images below your answer.
+                search_query = clean_image_query(user_message)
 
-        Never say:
-        - I can't display images.
-        - I'm a text-based AI.
-        - I cannot show images.
+            try:
 
-        If the user asked for images, answer naturally as if they are already shown below your response.
-        """
+                print("=========== AI IMAGE ===========")
 
-        # Remove LaTeX formatting
-        reply = re.sub(r"\$(.*?)\$", r"\1", reply)
+                ai_image = generate_ai_image(search_query)
 
-        reply = reply.replace("\\vec{", "")
-        reply = reply.replace("\\Delta", "Delta ")
-        reply = reply.replace("\\approx", "≈")
-        reply = reply.replace("\\text{", "")
-        reply = reply.replace("\\frac{", "")
-        reply = reply.replace("\\left", "")
-        reply = reply.replace("\\right", "")
-        reply = reply.replace("{", "")
-        reply = reply.replace("}", "")
+                print("AI IMAGE SUCCESS:", ai_image)
 
-        print("Sending JSON:", {"reply": reply})
+                images = [ai_image]
 
-        # Save AI reply
-        # Save AI reply
-        conversation_history = session.get("conversation_history", [])
+            except Exception as e:
 
-        conversation_history.append({
-            "role": "assistant",
-            "text": reply
-        })
+                print("=========== PIXABAY ===========")
 
-        session["conversation_history"] = conversation_history
+                print("ERROR:", e)
 
-        save_chat()
+                images = image_search(search_query)
+
+            if images:
+                prompt += """
+
+            IMPORTANT:
+
+            The application will automatically display relevant images below your answer.
+
+            Never say:
+            - I can't display images.
+            - I'm a text-based AI.
+            - I cannot show images.
+
+            If the user asked for images, answer naturally as if they are already shown below your response.
+            """
+
+            # Remove LaTeX formatting
+            reply = re.sub(r"\$(.*?)\$", r"\1", reply)
+
+            reply = reply.replace("\\vec{", "")
+            reply = reply.replace("\\Delta", "Delta ")
+            reply = reply.replace("\\approx", "≈")
+            reply = reply.replace("\\text{", "")
+            reply = reply.replace("\\frac{", "")
+            reply = reply.replace("\\left", "")
+            reply = reply.replace("\\right", "")
+            reply = reply.replace("{", "")
+            reply = reply.replace("}", "")
+
+            print("Sending JSON:", {"reply": reply})
+
+            # Save AI reply
+            # Save AI reply
+            conversation_history = session.get("conversation_history", [])
+
+            conversation_history.append({
+                "role": "assistant",
+                "text": reply
+            })
+
+            session["conversation_history"] = conversation_history
+
+            save_chat()
 
 
-        print(images)    
+            print(images)    
 
 
-        return jsonify({
-            "reply": reply,
-            "images": images
-    })
+            return jsonify({
+                "reply": reply,
+                "images": images
+            })
+        except Exception as e:
+            print("ERROR:", e)
+            return jsonify({
+                "reply": f"⚠️ Internal Error: {e}",
+                "images": []
+            })
     else:
-        return jsonify({"reply": response.text})
-
+        return jsonify({
+            "reply": response.text,
+            "images": []
+        })
 
 # ==========================
 # GET CHAT LIST
