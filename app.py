@@ -162,10 +162,8 @@ def chat():
         session["current_chat_title"] = user_message[:40]
 
     conversation_history.append({
-        "role": "user",
-        "text": user_message,
-        "image": image,
-        "pdf": pdf
+    "role": "user",
+    "text": user_message
     })
 
     session["conversation_history"] = conversation_history
