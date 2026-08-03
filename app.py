@@ -21,6 +21,8 @@ load_dotenv()
 
 API_KEY = os.environ["GEMINI_API_KEY"]
 
+PIXABAY_API_KEY = os.environ["PIXABAY_API_KEY"]
+
 
 def web_search(query):
 
@@ -66,6 +68,55 @@ def web_search(query):
     except Exception as e:
 
         return f"Search Error: {e}"
+
+def clean_image_query(text):
+    text = text.lower()
+
+    words = [
+        "show me",
+        "show",
+        "image of",
+        "images of",
+        "photo of",
+        "photos of",
+        "picture of",
+        "pictures of"
+    ]
+
+    for w in words:
+        text = text.replace(w, "")
+
+    return text.strip()
+
+def image_search(query):
+
+    url = "https://pixabay.com/api/"
+
+    params = {
+        "key": PIXABAY_API_KEY,
+        "q": query,
+        "image_type": "photo",
+        "per_page": 4
+    }
+
+    try:
+
+        response = requests.get(url, params=params)
+
+        data = response.json()
+
+        images = []
+
+        for hit in data.get("hits", []):
+
+            images.append(hit["webformatURL"])
+
+        return images
+
+    except Exception:
+
+        return []
+
 
 with open("system_prompt.txt", "r", encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read()
@@ -307,10 +358,41 @@ def chat():
     # --------------------------
 
     prompt = (
-        SYSTEM_PROMPT
-        + "\n\nConversation History:\n"
-        + conversation_text
-    )
+    SYSTEM_PROMPT
+    + """
+
+IMPORTANT INSTRUCTIONS
+
+You are Groom AI.
+
+The application automatically displays relevant images below your answer.
+
+Never say:
+- I can't display images.
+- I'm a text-based AI.
+- I cannot show images.
+- I cannot provide pictures.
+
+If the user asks for images, assume they are shown automatically by the application.
+
+Examples:
+
+User: Show me images of Burj Khalifa
+
+Assistant:
+Here are some images of the Burj Khalifa. It is the tallest building in the world, located in Dubai.
+
+User: Show me a lion
+
+Assistant:
+Here are some images of a lion along with a brief description.
+
+Do not mention any limitations about displaying images.
+
+"""
+    + "\n\nConversation History:\n"
+    + conversation_text
+)
 
     # Add PDF
     if pdf_text:
@@ -400,6 +482,50 @@ def chat():
         data = response.json()
         reply = data["candidates"][0]["content"]["parts"][0]["text"]
 
+        IMAGE_KEYWORDS = [
+            "image",
+            "images",
+            "photo",
+            "photos",
+            "picture",
+            "pictures",
+            "show",
+            "show me",
+            "wallpaper",
+            "logo"
+        ]
+
+        query = user_message.lower()
+
+        need_images = any(word in query for word in IMAGE_KEYWORDS)
+
+        if need_images:
+            search_query = user_message
+
+            for word in IMAGE_KEYWORDS:
+                search_query = search_query.replace(word, "")
+
+            search_query = search_query.replace("of", "").strip()
+
+            images = image_search(search_query)
+        else:
+            images = []
+
+        if images:
+            prompt += """
+
+        IMPORTANT:
+
+        The application will automatically display relevant images below your answer.
+
+        Never say:
+        - I can't display images.
+        - I'm a text-based AI.
+        - I cannot show images.
+
+        If the user asked for images, answer naturally as if they are already shown below your response.
+        """
+
         # Remove LaTeX formatting
         reply = re.sub(r"\$(.*?)\$", r"\1", reply)
 
@@ -429,8 +555,13 @@ def chat():
         save_chat()
 
 
+        print(images)    
 
-        return jsonify({"reply": reply})
+
+        return jsonify({
+            "reply": reply,
+            "images": images
+    })
     else:
         return jsonify({"reply": response.text})
 
