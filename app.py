@@ -116,6 +116,8 @@ def save_chat():
 
     title = session.get("current_chat_title", "New Chat")
 
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(
             {
@@ -127,6 +129,7 @@ def save_chat():
             ensure_ascii=False,
         )
 
+    print("CHAT SAVED:", file_path)
 
 
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={API_KEY}"
@@ -158,7 +161,11 @@ def chat():
 
     conversation_history = session.get("conversation_history", [])
 
+    if "current_chat" not in session:
+        session["current_chat"] = str(uuid.uuid4())
+
     if len(conversation_history) == 0:
+        session["current_chat"] = str(uuid.uuid4())
         session["current_chat_title"] = user_message[:40]
 
     conversation_history.append({
@@ -167,6 +174,10 @@ def chat():
     })
 
     session["conversation_history"] = conversation_history
+
+    session.modified = True
+    save_chat()
+
 
     user_message = build_prompt(user_message)
     
