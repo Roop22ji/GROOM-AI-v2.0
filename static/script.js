@@ -286,6 +286,24 @@ async function sendMessage() {
 
         await typeBotMessage(data.reply);
 
+        if (data.images) {
+
+            const html = data.images.map(img => `
+                <img src="${img}"
+                    class="search-image"
+                    onclick="openImage('${img}')">
+            `).join("");
+
+            chat.insertAdjacentHTML(
+                "beforeend",
+                `<div class="message bot-row">
+                    <div class="avatar ai-avatar">🚀</div>
+                    <div class="bubble bot">${html}</div>
+                </div>`
+            );
+
+        }
+
         loadChatList();
     }
 
@@ -532,3 +550,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
 });
+
+function openImage(src){
+
+    document.getElementById("viewerImage").src = src;
+
+    document.getElementById("imageViewer").style.display = "flex";
+
+}
+
+function closeImage(){
+
+    document.getElementById("imageViewer").style.display = "none";
+
+}
