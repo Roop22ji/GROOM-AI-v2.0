@@ -700,3 +700,63 @@ body{
         opacity:0;
     }
 }
+
+.search-image{
+    width:170px;
+    margin:5px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:.2s;
+}
+
+.search-image:hover{
+    transform:scale(1.05);
+}
+
+.image-viewer{
+
+    display:none;
+
+    position:fixed;
+
+    left:0;
+    top:0;
+
+    width:100%;
+    height:100%;
+
+    background:rgba(0,0,0,.9);
+
+    z-index:99999;
+
+    justify-content:center;
+
+    align-items:center;
+
+}
+
+.image-viewer img{
+
+    max-width:95%;
+
+    max-height:95%;
+
+    border-radius:12px;
+
+}
+
+.close-image{
+
+    position:absolute;
+
+    right:30px;
+
+    top:20px;
+
+    color:white;
+
+    font-size:45px;
+
+    cursor:pointer;
+
+}
