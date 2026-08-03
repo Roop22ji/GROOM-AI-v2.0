@@ -760,3 +760,463 @@ body{
     cursor:pointer;
 
 }
+
+/* ==========================
+   GROOM AI MASCOT
+========================== */
+
+#groom-helper{
+
+    position:fixed;
+
+    right:20px;
+    bottom:120px;
+
+    z-index:99999;
+
+    text-align:center;
+
+    opacity:0;
+
+    transform:translateY(150px) scale(.7);
+
+    pointer-events:auto;   /* <-- CHANGE THIS */
+
+    cursor:pointer;        /* <-- ADD THIS */
+
+    transition:
+        transform .6s ease,
+        opacity .6s ease;
+
+}
+
+#groom-helper.show{
+
+    opacity:1;
+
+    transform:translateY(0) scale(1);
+
+}
+
+
+.groom-robot{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: groomFloat 3s ease-in-out infinite;
+}
+
+
+/* HEAD */
+
+.groom-head{
+
+    width:120px;
+
+    height:90px;
+
+    background:white;
+
+    border-radius:35px;
+
+    border:4px solid #00bfff;
+
+    position:relative;
+
+    box-shadow:
+    0 0 15px #00bfff,
+    0 0 35px #8a2be2;
+
+}
+
+
+/* EYES */
+
+.eye{
+
+    width:18px;
+
+    height:18px;
+
+    background:#00e5ff;
+
+    border-radius:50%;
+
+    position:absolute;
+
+    top:35px;
+
+    box-shadow:
+    0 0 15px #00e5ff;
+
+}
+
+
+.left-eye{
+
+    left:35px;
+
+}
+
+
+.right-eye{
+
+    right:35px;
+
+}
+
+
+/* SMILE */
+
+.mouth{
+
+    width:35px;
+    height:15px;
+
+    border-bottom:4px solid #00bfff;
+    border-radius:50%;
+
+    position:absolute;
+
+    left:50%;
+    transform:translateX(-50%);
+
+    bottom:18px;
+
+}
+
+
+/* BODY */
+
+.groom-body{
+
+    width:90px;
+    height:82px;
+
+    background:white;
+
+    border-radius:32px;
+
+    border:3px solid #8a2be2;
+
+    margin:4px auto 0;
+
+    position:relative;
+
+}
+
+/* CHEST CORE */
+
+.core{
+
+    width:25px;
+
+    height:25px;
+
+    border-radius:50%;
+
+    background:#00e5ff;
+
+    
+
+    box-shadow:
+
+    0 0 20px #00e5ff;
+
+}
+.core{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+}
+
+
+/* MESSAGE */
+
+.groom-message{
+
+    margin-top:15px;
+
+    background:#222;
+
+    color:white;
+
+    padding:10px 15px;
+
+    border-radius:20px;
+
+    font-size:14px;
+
+}
+
+
+/* FLOATING */
+
+@keyframes groomFloat{
+
+    0%{
+
+        transform:translateY(0px);
+
+    }
+
+
+    50%{
+
+        transform:translateY(-15px);
+
+    }
+
+
+    100%{
+
+        transform:translateY(0px);
+
+    }
+
+}
+
+
+/* GROOM BLINK */
+
+@keyframes groomBlink{
+
+    0%,90%,100%{
+        transform:scaleY(1);
+    }
+
+    95%{
+        transform:scaleY(0.1);
+    }
+
+}
+
+
+.eye{
+
+    animation:groomBlink 5s infinite;
+
+}
+
+/* GROOM ARMS */
+
+
+
+.arm{
+    position: absolute;
+    width: 14px;
+    height: 45px;
+    background: white;
+    border: 3px solid #8a2be2;
+    border-radius: 20px;
+    top: 10px;
+}
+
+.left-arm{
+
+    left:-22px;
+
+}
+
+.right-arm{
+
+    right:-22px;
+
+}
+.groom-center{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+}
+
+/* GROOM Expressions */
+
+.groom-head.happy .mouth{
+    border-bottom:4px solid #00bfff;
+    width:35px;
+    height:15px;
+}
+
+.groom-head.thinking .mouth{
+    width:30px;
+    height:0;
+    border:none;
+    border-top:4px solid #00bfff;
+    border-radius:0;
+}
+
+.groom-head.surprised .mouth{
+    width:14px;
+    height:14px;
+    border:3px solid #00bfff;
+    border-radius:50%;
+}
+
+/* Thinking Core Animation */
+
+.groom-head.thinking + .groom-body .core{
+    animation: coreThinking .8s infinite alternate;
+}
+
+@keyframes coreThinking{
+
+    from{
+        transform:translate(-50%,-50%) scale(1);
+        box-shadow:0 0 20px #00e5ff;
+    }
+
+    to{
+        transform:translate(-50%,-50%) scale(1.35);
+        box-shadow:
+            0 0 25px #00e5ff,
+            0 0 50px #00e5ff,
+            0 0 80px #8a2be2;
+    }
+
+}
+
+/* ==========================
+   GROOM PANEL
+========================== */
+
+#groom-panel{
+
+    display:none;
+
+    position:absolute;
+
+    right:110px;      /* Opens beside the robot */
+    bottom:20px;
+
+    width:260px;
+
+    max-height:300px;
+    overflow-y:auto;
+
+    background:#202020;
+
+    border:2px solid #00bfff;
+    border-radius:20px;
+
+    padding:15px;
+
+    box-shadow:0 0 25px rgba(0,191,255,.35);
+
+    z-index:999999;
+
+}
+
+#groom-panel.show{
+    display:block;
+}
+
+.panel-title{
+
+    color:white;
+
+    text-align:center;
+
+    margin-bottom:15px;
+
+    font-size:18px;
+
+    font-weight:bold;
+
+}
+
+.groom-action{
+
+    width:100%;
+
+    margin-bottom:10px;
+
+    padding:12px;
+
+    border:none;
+
+    border-radius:12px;
+
+    background:#2f2f2f;
+
+    color:white;
+
+    cursor:pointer;
+
+    transition:.25s;
+
+}
+
+.groom-action:hover{
+
+    background:#00bfff;
+
+    transform:translateX(5px);
+
+}
+
+@keyframes panelPop{
+
+    from{
+
+        opacity:0;
+
+        transform:translateY(20px);
+
+    }
+
+    to{
+
+        opacity:1;
+
+        transform:translateY(0);
+
+    }
+
+}
+
+/* ==========================
+   QUICK ASK MENU
+========================== */
+
+.quick-menu{
+
+    display:none;
+
+    margin-top:10px;
+
+}
+
+.quick-menu.show{
+
+    display:block;
+
+}
+
+.quick-item{
+
+    width:100%;
+
+    margin:6px 0;
+
+    padding:10px;
+
+    border:none;
+
+    border-radius:10px;
+
+    background:#2b2b2b;
+
+    color:white;
+
+    cursor:pointer;
+
+    transition:.2s;
+
+}
+
+.quick-item:hover{
+
+    background:#00bfff;
+
+}
