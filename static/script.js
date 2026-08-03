@@ -1,8 +1,10 @@
 const chat = document.getElementById("chat-box");
+const chatBox = document.getElementById("chat-box");
 const input = document.getElementById("message");
 const sendBtn = document.getElementById("sendBtn");
 const imagePreviewContainer =
     document.getElementById("imagePreviewContainer");
+
 
 const fileInput = document.getElementById("fileInput");
 
@@ -283,6 +285,8 @@ async function sendMessage() {
         thinking.remove();
 
         await typeBotMessage(data.reply);
+
+        loadChatList();
     }
 
     catch (err) {
@@ -305,16 +309,16 @@ async function loadChatList() {
     const chatList = document.getElementById("chatList");
     chatList.innerHTML = "";
 
-    chats.forEach(chat => {
+    chats.forEach(chatItem => {
 
         const div = document.createElement("div");
         div.className = "chat-item";
 
         const title = document.createElement("span");
-        title.textContent = chat.title;
+        title.textContent = chatItem.title;
         title.style.flex = "1";
 
-        title.onclick = () => loadChat(chat.id);
+        title.onclick = () => loadChat(chatItem.id);
 
         const del = document.createElement("button");
         del.innerHTML = "✕";
@@ -323,15 +327,29 @@ async function loadChatList() {
         del.onclick = async (e) => {
 
             e.stopPropagation();
-
+        
             if (!confirm("Delete this chat?"))
                 return;
-
-            await fetch("/delete_chat/" + chat.id, {
+        
+            await fetch("/delete_chat/" + chatItem.id, {
                 method: "POST"
             });
-
-            loadChatList();
+        
+            // Clear current screen
+            chatBox.innerHTML = `
+                <div id="welcome" class="welcome">
+                    <div class="welcome-logo">🚀</div>
+                    <h1>Welcome to GROOM AI</h1>
+                    <p>Ask anything. I'm always ready to help.</p>
+                </div>
+            `;
+        
+            sessionStorage.removeItem("currentChat");
+        
+            // wait a little, then reload sidebar
+            setTimeout(() => {
+                loadChatList();
+            }, 300);
         };
 
         div.appendChild(title);
@@ -348,6 +366,8 @@ async function loadChatList() {
 // ==========================
 
 async function loadChat(chatId) {
+
+    sessionStorage.setItem("currentChat", chatId);
 
     const response = await fetch("/load_chat/" + chatId);
 
@@ -424,6 +444,8 @@ if (window.visualViewport) {
 
 // Load saved chats
 loadChatList();
+
+
 
 // ==========================
 // SIDEBAR TOGGLE
