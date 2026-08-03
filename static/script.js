@@ -271,7 +271,12 @@ async function sendMessage() {
             })
         });
 
+        if (!response.ok) {
+            throw new Error("HTTP " + response.status);
+        }
+        
         const data = await response.json();
+        console.log(data);
 
         clearInterval(animation);
 
@@ -281,15 +286,13 @@ async function sendMessage() {
     }
 
     catch (err) {
-
         clearInterval(animation);
     
         thinking.remove();
     
-        await typeBotMessage("⚠️ Network error. Please try again.");
+        console.error("ERROR:", err);
     
-        console.error(err);
-    
+        await typeBotMessage("⚠️ " + err.message);
     }
 
 }
