@@ -11,6 +11,7 @@ const fileInput = document.getElementById("fileInput");
 
 
 let stopGeneration = false;
+let isGenerating = false;
 
 function scrollBottom() {
     chat.scrollTop = chat.scrollHeight;
@@ -28,7 +29,11 @@ let selectedPDF = null;
 
 fileInput.addEventListener("change", function () {
 
+    
+
     const file = this.files[0];
+
+    
 
     if (!file) return;
 
@@ -49,6 +54,16 @@ fileInput.addEventListener("change", function () {
                     🖼️ <strong>${file.name}</strong>
                 </div>
             `;
+            const title = document.querySelector(".panel-title");
+
+            
+
+            if (title) {
+                title.innerHTML = "📄 PDF Assistant";
+                
+            }
+
+            
 
         };
 
@@ -56,24 +71,49 @@ fileInput.addEventListener("change", function () {
 
     }
 
-    else if (file.type === "application/pdf") {
+    if (file.name.toLowerCase().endsWith(".pdf")) {
 
+
+        
+
+        
+    
+        const title = document.querySelector(".panel-title");
+    
+        if (title) {
+            title.innerHTML = "📄 PDF Assistant";
+        }
+
+        const btn = document.getElementById("summaryBtn");
+
+        
+
+        if (btn) {
+            btn.innerHTML = "📄 Summarize PDF";
+        }
+
+        document.getElementById("fileBtn").innerHTML = "❓ Ask Questions";
+
+        document.getElementById("codeBtn").innerHTML = "📚 Extract Text";
+
+        
+    
         const reader = new FileReader();
-
+    
         reader.onload = function (e) {
-
+    
             selectedPDF = e.target.result;
-
+    
             imagePreviewContainer.innerHTML = `
                 <div class="preview-box">
                     📄 <strong>${file.name}</strong>
                 </div>
             `;
-
+    
         };
-
+    
         reader.readAsDataURL(file);
-
+    
     }
 
 });
@@ -148,10 +188,15 @@ async function typeBotMessage(text) {
 
         if (stopGeneration) {
 
+            isGenerating = false;
+        
+            sendBtn.disabled = false;
             sendBtn.innerHTML = "➤";
         
-            return;
+            input.placeholder = "Message GROOM AI...";
+            input.focus();
         
+            return;
         }
 
         current += words[i] + " ";
@@ -182,6 +227,15 @@ async function typeBotMessage(text) {
 
 async function sendMessage() {
      
+
+    if (isGenerating) {
+        return;
+    }
+    isGenerating = true;
+
+    sendBtn.disabled = true;
+    input.placeholder = "⏳ GROOM is replying...";
+
     const imageToSend = selectedImage;
     const pdfToSend = selectedPDF;
 
@@ -192,7 +246,14 @@ async function sendMessage() {
     const text = input.value.trim();
 
     if (!text) {
+
+        isGenerating = false;
+
+        input.disabled = false;
+        sendBtn.disabled = false;
+
         sendBtn.innerHTML = "➤";
+
         return;
     }
     
@@ -230,6 +291,17 @@ async function sendMessage() {
     thinking.className = "message bot-row";
 
     thinking.id = "thinking";
+
+    const head = document.querySelector(".groom-head");
+
+    head.classList.remove("happy");
+    head.classList.add("thinking");
+
+    const bubble = document.querySelector(".groom-message");
+
+    if (bubble) {
+        bubble.innerHTML = "🤔 Thinking...";
+    }
 
     thinking.innerHTML = `
         <div class="avatar ai-avatar">🚀</div>
@@ -286,7 +358,33 @@ async function sendMessage() {
 
         await typeBotMessage(data.reply);
 
-        if (data.images) {
+        isGenerating = false;
+
+        sendBtn.disabled = false;
+        input.disabled = false;
+
+        input.placeholder = "Message GROOM AI...";
+
+        sendBtn.innerHTML = "➤";
+
+        input.focus();
+
+        const head = document.querySelector(".groom-head");
+
+        head.classList.remove("thinking");
+        head.classList.add("happy");
+
+        if (bubble) {
+
+            bubble.innerHTML = "😊 Done!";
+        
+            setTimeout(() => {
+                bubble.innerHTML = "Need anything else?";
+            }, 2000);
+        
+        }
+
+        if (data.images && data.images.length > 0) {
 
             const html = data.images.map(img => `
                 <img src="${img}"
@@ -308,6 +406,13 @@ async function sendMessage() {
     }
 
     catch (err) {
+
+        isGenerating = false;
+
+        sendBtn.disabled = false;
+        input.placeholder = "Message GROOM AI...";
+        input.focus();
+
         clearInterval(animation);
     
         thinking.remove();
@@ -551,6 +656,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
+
+
 function openImage(src){
 
     document.getElementById("viewerImage").src = src;
@@ -564,3 +671,140 @@ function closeImage(){
     document.getElementById("imageViewer").style.display = "none";
 
 }
+
+// ==========================
+// GROOM ROBOT ACTIVATION
+// ==========================
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const rocket = document.querySelector(".logo");
+    const groom = document.getElementById("groom-helper");
+    const panel = document.getElementById("groom-panel");
+    const head = document.querySelector(".groom-head");
+    const summaryBtn = document.getElementById("summaryBtn");
+
+    // // ==========================
+    // // SUMMARIZE PDF BUTTON
+    // // ==========================
+
+    // const summaryBtn = document.getElementById("summaryBtn");
+
+    // if (summaryBtn) {
+
+    //     summaryBtn.addEventListener("click", () => {
+
+    //         alert("Summarize button clicked!");
+
+    //     });
+
+    // }
+
+    if (rocket && groom) {
+
+        rocket.addEventListener("click", () => {
+
+            groom.classList.toggle("show");
+        
+            if (groom.classList.contains("show")) {
+                head.classList.remove("thinking");
+                head.classList.add("happy");
+            }
+        
+        });
+
+    }
+
+    if (groom && panel) {
+
+        const robot = document.querySelector(".groom-robot");
+
+        robot.addEventListener("click", function(e){
+
+            e.stopPropagation();
+
+            panel.classList.toggle("show");
+
+        });
+    
+
+        panel.addEventListener("click", function(e){
+
+            e.stopPropagation();
+        
+            if (e.target.id === "summaryBtn"){
+
+                input.value = "Summarize this PDF";
+            
+                panel.classList.remove("show");
+            
+                sendMessage();
+            
+                return;
+            
+            }
+        
+            else if (e.target.id === "fileBtn"){
+
+                input.value = "Answer my questions about this PDF";
+            
+                panel.classList.remove("show");
+            
+                sendMessage();
+            
+                return;
+            
+            }
+
+            else if (e.target.id === "codeBtn"){
+
+                input.value = "Extract all text from this PDF";
+
+                panel.classList.remove("show");
+
+                sendMessage();
+
+                return;
+
+            }
+        
+            else if (e.target.classList.contains("quick-item")){
+        
+                input.value = e.target.textContent.trim();
+        
+                panel.classList.remove("show");
+        
+                sendMessage();
+        
+            }
+        
+        });
+
+// ==========================
+// QUICK ASK
+// ==========================
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const quickBtn = document.querySelector('[data-action="ask"]');
+    const quickMenu = document.getElementById("quickAskMenu");
+
+    if (quickBtn && quickMenu) {
+
+        quickBtn.onclick = function(e) {
+
+            e.stopPropagation();
+
+            quickMenu.classList.toggle("show");
+
+            console.log("Quick Ask Clicked");
+
+        };
+
+    }
+
+});
+}
+
+});
+
