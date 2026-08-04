@@ -902,16 +902,17 @@ function speakGroom(text) {
 
     const groom = document.getElementById("groom-helper");
 
-    // Speak only when robot is open
     if (!groom || !groom.classList.contains("show")) {
         return;
     }
 
+    if (!("speechSynthesis" in window)) {
+        console.log("Speech not supported");
+        return;
+    }
+
+
     const speech = new SpeechSynthesisUtterance(text);
-
-    let voices = speechSynthesis.getVoices();
-
-    speech.voice = voices[0];
 
     speech.lang = "en-US";
     speech.rate = 1;
@@ -940,6 +941,15 @@ function speakGroom(text) {
     };
 
 
+    // Load voices safely
+    let voices = window.speechSynthesis.getVoices();
+
+    if (voices.length > 0) {
+        speech.voice = voices[0];
+    }
+
+
+    window.speechSynthesis.cancel();
     window.speechSynthesis.speak(speech);
 
 }
