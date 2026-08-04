@@ -356,9 +356,11 @@ async function sendMessage() {
 
         thinking.remove();
 
+        speakGroom(data.reply);
+
         await typeBotMessage(data.reply);
 
-        speakGroom(data.reply);
+        
 
         isGenerating = false;
 
@@ -900,55 +902,27 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
-    if (!("speechSynthesis" in window)) {
-        console.log("Speech synthesis not available");
-        return;
-    }
-
-    const speech = new SpeechSynthesisUtterance(text);
-
-    speech.lang = "en-US";
-    speech.rate = 1;
-    speech.pitch = 1;
-
-
-    // Load Android voices
-    let voices = window.speechSynthesis.getVoices();
-
-    if (voices.length > 0) {
-
-        let englishVoice = voices.find(v =>
-            v.lang.includes("en")
-        );
-
-        speech.voice = englishVoice || voices[0];
-
-    }
-
-
-    speech.onstart = () => {
-        startTalking();
-    };
-
-
-    speech.onend = () => {
-        stopTalking();
-    };
-
-
-    speech.onerror = (e) => {
-        console.log("Speech error:", e);
-        stopTalking();
-    };
-
+    if (!window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
 
+    const speech = new SpeechSynthesisUtterance();
+    speech.text = text.substring(0, 200);   // limit for testing
+    speech.lang = navigator.language || "en-US";
+    speech.rate = 1;
+    speech.pitch = 1;
 
-    setTimeout(() => {
-        window.speechSynthesis.speak(speech);
-    }, 200);
+    const voices = speechSynthesis.getVoices();
 
+    if (voices.length) {
+        speech.voice = voices.find(v => v.lang.startsWith("en")) || voices[0];
+    }
+
+    speech.onstart = startTalking;
+    speech.onend = stopTalking;
+    speech.onerror = stopTalking;
+
+    speechSynthesis.speak(speech);
 }
 
 window.speechSynthesis.onvoiceschanged = () => {
