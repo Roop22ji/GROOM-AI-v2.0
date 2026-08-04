@@ -900,6 +900,8 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
+    window.speechSynthesis.getVoices();
+
     const groom = document.getElementById("groom-helper");
 
     if (!groom || !groom.classList.contains("show")) {
@@ -950,8 +952,9 @@ function speakGroom(text) {
 
 
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
-
+    setTimeout(() => {
+        window.speechSynthesis.speak(speech);
+    }, 200);
 }
 
 
