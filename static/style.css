@@ -885,6 +885,35 @@ body{
 
 }
 
+/* TALKING MOUTH */
+
+.groom-head.speaking .mouth {
+
+    height:10px;
+    width:30px;
+
+    background:#00bfff;
+
+    border:none;
+
+    border-radius:50%;
+
+    animation: talk 0.18s infinite alternate;
+
+}
+
+
+@keyframes talk {
+
+    from {
+        transform:translateX(-50%) scaleY(0.6);
+    }
+
+    to {
+        transform:translateX(-50%) scaleY(1.2);
+    }
+
+}
 
 /* BODY */
 
@@ -1302,4 +1331,17 @@ body{
         transform: translateY(-8px);
     }
 
+}
+
+/* .groom-mouth {
+    width: 35px;
+    height: 8px;
+    background: black;
+    border-radius: 20px;
+    margin: 15px auto;
+    transition: height 0.1s;
+} */
+
+.groom-head.speaking .mouth {
+    bottom:18px;
 }
