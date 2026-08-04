@@ -1220,3 +1220,86 @@ body{
     background:#00bfff;
 
 }
+
+/* ==========================
+   GROOM EXPRESSIONS
+========================== */
+
+/* Happy */
+.groom-head.happy .mouth {
+    height:20px;
+    border-bottom:5px solid #00bfff;
+}
+
+.groom-head.happy .eye {
+    transform:scaleY(0.7);
+}
+
+
+/* Thinking */
+.groom-head.thinking .eye {
+    animation: thinkingEye 1s infinite alternate;
+}
+
+.groom-head.thinking .mouth {
+    width:25px;
+    height:5px;
+    border-bottom:3px solid #00bfff;
+}
+
+
+/* Sleeping */
+.groom-head.sleep .eye {
+    height:3px;
+    border-radius:0;
+}
+
+.groom-head.sleep .mouth {
+    width:20px;
+}
+
+
+/* Angry */
+.groom-head.angry .eye {
+    background:red;
+}
+
+.groom-head.angry .mouth {
+    border-bottom:none;
+    border-top:4px solid red;
+}
+
+
+@keyframes thinkingEye {
+    from{
+        transform:translateY(0);
+    }
+    to{
+        transform:translateY(-8px);
+    }
+}
+
+/* GROOM THINKING EXPRESSION */
+
+.groom-head.thinking .eye {
+    animation: thinkingEye 1s infinite alternate;
+}
+
+.groom-head.thinking .mouth {
+    width:25px;
+    height:5px;
+    border-bottom:3px solid #00bfff;
+}
+
+
+@keyframes thinkingEye {
+
+    from {
+        transform: translateY(0);
+    }
+
+    to {
+        transform: translateY(-8px);
+    }
+
+}
