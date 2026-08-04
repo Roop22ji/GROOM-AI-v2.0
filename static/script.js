@@ -911,7 +911,7 @@ function speakGroom(text) {
 
     let voices = speechSynthesis.getVoices();
 
-    speech.voice = voices[2];
+    speech.voice = voices[0];
 
     speech.lang = "en-US";
     speech.rate = 1;
