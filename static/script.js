@@ -900,7 +900,14 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
-    if (!window.speechSynthesis) {
+    const groom = document.getElementById("groom-helper");
+
+    // Only speak when Groom is open
+    if (!groom || !groom.classList.contains("show")) {
+        return;
+    }
+
+    if (!("speechSynthesis" in window)) {
         console.log("Speech synthesis not available");
         return;
     }
@@ -911,6 +918,16 @@ function speakGroom(text) {
     speech.rate = 1;
     speech.pitch = 1;
 
+    let voices = window.speechSynthesis.getVoices();
+
+    if (voices.length > 0) {
+        let englishVoice = voices.find(v =>
+            v.lang.includes("en")
+        );
+
+        speech.voice = englishVoice || voices[0];
+    }
+
     speech.onstart = () => {
         startTalking();
     };
@@ -919,11 +936,24 @@ function speakGroom(text) {
         stopTalking();
     };
 
+    speech.onerror = () => {
+        stopTalking();
+    };
+
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
+
+    setTimeout(() => {
+        window.speechSynthesis.speak(speech);
+    }, 200);
 
 }
 
+window.speechSynthesis.onvoiceschanged = () => {
+    console.log(
+        "Voices loaded:",
+        window.speechSynthesis.getVoices().length
+    );
+};
 
 let mouthAnimation;
 
@@ -967,3 +997,24 @@ speechSynthesis.onvoiceschanged = () => {
     });
 
 };
+
+function startTalking(){
+
+    const head = document.querySelector(".groom-head");
+
+    if(head){
+        head.classList.add("speaking");
+    }
+
+}
+
+
+function stopTalking(){
+
+    const head = document.querySelector(".groom-head");
+
+    if(head){
+        head.classList.remove("speaking");
+    }
+
+}
