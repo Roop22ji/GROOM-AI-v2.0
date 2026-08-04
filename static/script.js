@@ -808,3 +808,87 @@ document.addEventListener("DOMContentLoaded", () => {
 
 });
 
+
+// ==========================
+// GROOM ROBOT DRAG / GRAB FEATURE
+// ==========================
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    const groom = document.getElementById("groom-helper");
+
+    if (!groom) return;
+
+    let isDragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    function startDrag(e) {
+
+        isDragging = true;
+
+        const rect = groom.getBoundingClientRect();
+
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        offsetX = clientX - rect.left;
+        offsetY = clientY - rect.top;
+
+        groom.style.transition = "none";
+    }
+
+
+    function moveDrag(e) {
+
+        if (!isDragging) return;
+
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+
+        groom.style.left = (clientX - offsetX) + "px";
+        groom.style.top = (clientY - offsetY) + "px";
+
+        groom.style.right = "auto";
+        groom.style.bottom = "auto";
+    }
+
+
+    function stopDrag() {
+
+        isDragging = false;
+
+        groom.style.transition =
+        "transform .6s ease, opacity .6s ease";
+
+    }
+
+
+    groom.addEventListener("mousedown", startDrag);
+    document.addEventListener("mousemove", moveDrag);
+    document.addEventListener("mouseup", stopDrag);
+
+
+    // Mobile touch
+    groom.addEventListener("touchstart", startDrag);
+    document.addEventListener("touchmove", moveDrag);
+    document.addEventListener("touchend", stopDrag);
+
+});
+
+function groomExpression(expression){
+
+    const head = document.querySelector(".groom-head");
+
+    if(!head) return;
+
+    head.classList.remove(
+        "happy",
+        "thinking",
+        "sleep",
+        "angry"
+    );
+
+    head.classList.add(expression);
+}
