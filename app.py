@@ -18,6 +18,9 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import os
 
+import edge_tts
+import asyncio
+
 load_dotenv()
 
 API_KEY = os.environ["GEMINI_API_KEY"]
@@ -736,6 +739,42 @@ def new_chat():
     session["current_chat_title"] = "New Chat"
 
     return jsonify({"success": True})
+
+@app.route("/voice", methods=["POST"])
+def voice():
+
+    text = request.json.get("text")
+
+    if not text:
+        return jsonify({"error": "No text"})
+
+
+    async def generate():
+
+        communicate = edge_tts.Communicate(
+            text,
+            "en-US-AriaNeural"
+        )
+
+        audio = io.BytesIO()
+
+        async for chunk in communicate.stream():
+
+            if chunk["type"] == "audio":
+                audio.write(chunk["data"])
+
+        audio.seek(0)
+
+        return audio
+
+
+    audio = asyncio.run(generate())
+
+
+    return app.response_class(
+        audio.read(),
+        mimetype="audio/mpeg"
+    )
 
 
 if __name__ == "__main__":
