@@ -900,52 +900,43 @@ function groomExpression(expression){
 // GROOM AI VOICE OUTPUT
 // ==========================
 
-function speakGroom(text) {
+async function speakGroom(text){
 
-    if (!window.speechSynthesis) {
-        alert("Speech not supported");
-        return;
-    }
+    const response = await fetch("/voice",{
 
-    const speak = () => {
+        method:"POST",
 
-        const speech = new SpeechSynthesisUtterance(text);
+        headers:{
+            "Content-Type":"application/json"
+        },
 
-        speech.lang = "en-US";
-        speech.rate = 1;
-        speech.pitch = 1;
+        body:JSON.stringify({
+            text:text
+        })
 
-        speech.onstart = () => {
-            alert("Speech started");
-            startTalking();
-        };
+    });
 
-        speech.onend = () => {
-            stopTalking();
-        };
 
-        speech.onerror = (e) => {
-            alert("Error: " + e.error);
-        };
+    const blob = await response.blob();
 
-        speechSynthesis.cancel();
-        speechSynthesis.speak(speech);
+
+    const audioURL = URL.createObjectURL(blob);
+
+
+    const audio = new Audio(audioURL);
+
+
+    audio.onplay = ()=>{
+        startTalking();
     };
 
 
-    let voices = speechSynthesis.getVoices();
+    audio.onended = ()=>{
+        stopTalking();
+    };
 
-    if (voices.length === 0) {
 
-        speechSynthesis.onvoiceschanged = () => {
-            speak();
-        };
-
-    } else {
-
-        speak();
-
-    }
+    audio.play();
 
 }
 
