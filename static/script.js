@@ -358,6 +358,8 @@ async function sendMessage() {
 
         await typeBotMessage(data.reply);
 
+        speakGroom(data.reply);
+
         isGenerating = false;
 
         sendBtn.disabled = false;
@@ -892,3 +894,96 @@ function groomExpression(expression){
 
     head.classList.add(expression);
 }
+// ==========================
+// GROOM AI VOICE OUTPUT
+// ==========================
+
+function speakGroom(text) {
+
+    const groom = document.getElementById("groom-helper");
+
+    // Speak only when robot is open
+    if (!groom || !groom.classList.contains("show")) {
+        return;
+    }
+
+    const speech = new SpeechSynthesisUtterance(text);
+
+    let voices = speechSynthesis.getVoices();
+
+    speech.voice = voices[2];
+
+    speech.lang = "en-US";
+    speech.rate = 1;
+    speech.pitch = 1;
+
+
+    speech.onstart = () => {
+
+        const head = document.querySelector(".groom-head");
+
+        if (head) {
+            head.classList.add("speaking");
+        }
+
+    };
+
+
+    speech.onend = () => {
+
+        const head = document.querySelector(".groom-head");
+
+        if (head) {
+            head.classList.remove("speaking");
+        }
+
+    };
+
+
+    window.speechSynthesis.speak(speech);
+
+}
+
+
+let mouthAnimation;
+
+function startMouth() {
+
+    const mouth = document.querySelector(".groom-mouth");
+
+    if (!mouth) return;
+
+    mouthAnimation = setInterval(() => {
+
+        if (mouth.style.height === "25px") {
+            mouth.style.height = "8px";
+        } else {
+            mouth.style.height = "25px";
+        }
+
+    }, 120);
+
+}
+
+
+function stopMouth() {
+
+    clearInterval(mouthAnimation);
+
+    const mouth = document.querySelector(".groom-mouth");
+
+    if (mouth) {
+        mouth.style.height = "8px";
+    }
+
+}
+
+speechSynthesis.onvoiceschanged = () => {
+
+    let voices = speechSynthesis.getVoices();
+
+    voices.forEach((voice, index) => {
+        console.log(index + ": " + voice.name);
+    });
+
+};
