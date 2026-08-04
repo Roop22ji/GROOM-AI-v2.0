@@ -902,33 +902,51 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
-    alert("Voice function running");
-
     if (!window.speechSynthesis) {
-        alert("No speech synthesis");
+        alert("Speech not supported");
         return;
     }
 
-    const speech = new SpeechSynthesisUtterance("Hello, I am Groom AI");
+    const speak = () => {
 
-    speech.lang = "en-US";
+        const speech = new SpeechSynthesisUtterance(text);
 
-    speech.onstart = () => {
-        alert("Speech started");
-        startTalking();
+        speech.lang = "en-US";
+        speech.rate = 1;
+        speech.pitch = 1;
+
+        speech.onstart = () => {
+            alert("Speech started");
+            startTalking();
+        };
+
+        speech.onend = () => {
+            stopTalking();
+        };
+
+        speech.onerror = (e) => {
+            alert("Error: " + e.error);
+        };
+
+        speechSynthesis.cancel();
+        speechSynthesis.speak(speech);
     };
 
-    speech.onend = () => {
-        alert("Speech ended");
-        stopTalking();
-    };
 
-    speech.onerror = (e) => {
-        alert("Speech error: " + e.error);
-    };
+    let voices = speechSynthesis.getVoices();
 
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(speech);
+    if (voices.length === 0) {
+
+        speechSynthesis.onvoiceschanged = () => {
+            speak();
+        };
+
+    } else {
+
+        speak();
+
+    }
+
 }
 
 
