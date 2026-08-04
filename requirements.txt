@@ -5,3 +5,4 @@ duckduckgo-search==3.9.11
 pypdf==5.9.0
 beautifulsoup4==4.15.0
 python-dotenv==1.0.1
+huggingface_hub
