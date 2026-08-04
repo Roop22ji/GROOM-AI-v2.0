@@ -902,6 +902,11 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
+
+    console.log("GROOM VOICE STARTED", text);
+    alert("GROOM VOICE STARTED");
+    
+
     if (!window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
