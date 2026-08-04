@@ -553,6 +553,10 @@ Do not mention any limitations about displaying images.
             print("need_images =", need_images)
             print("user_message =", user_message)
 
+            search_query = ""
+
+           
+
             images = []
 
             if need_images:
@@ -561,23 +565,24 @@ Do not mention any limitations about displaying images.
 
                 search_query = clean_image_query(user_message)
 
-            try:
+                try:
 
-                print("=========== AI IMAGE ===========")
+                    print("=========== AI IMAGE ===========")
 
-                ai_image = generate_ai_image(search_query)
+                    ai_image = generate_ai_image(search_query)
 
-                print("AI IMAGE SUCCESS:", ai_image)
+                    print("AI IMAGE SUCCESS:", ai_image)
 
-                images = [ai_image]
+                    images = [ai_image]
 
-            except Exception as e:
+                except Exception as e:
 
-                print("=========== PIXABAY ===========")
+                    print("=========== PIXABAY ===========")
 
-                print("ERROR:", e)
+                    print("ERROR:", e)
 
-                images = image_search(search_query)
+                    images = image_search(search_query)
+                
 
             if images:
                 prompt += """
