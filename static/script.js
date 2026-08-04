@@ -900,13 +900,6 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
-    const groom = document.getElementById("groom-helper");
-
-    // Only speak when Groom is open
-    if (!groom || !groom.classList.contains("show")) {
-        return;
-    }
-
     if (!("speechSynthesis" in window)) {
         console.log("Speech synthesis not available");
         return;
@@ -918,29 +911,39 @@ function speakGroom(text) {
     speech.rate = 1;
     speech.pitch = 1;
 
+
+    // Load Android voices
     let voices = window.speechSynthesis.getVoices();
 
     if (voices.length > 0) {
+
         let englishVoice = voices.find(v =>
             v.lang.includes("en")
         );
 
         speech.voice = englishVoice || voices[0];
+
     }
+
 
     speech.onstart = () => {
         startTalking();
     };
 
+
     speech.onend = () => {
         stopTalking();
     };
 
-    speech.onerror = () => {
+
+    speech.onerror = (e) => {
+        console.log("Speech error:", e);
         stopTalking();
     };
 
+
     window.speechSynthesis.cancel();
+
 
     setTimeout(() => {
         window.speechSynthesis.speak(speech);
@@ -988,15 +991,7 @@ function stopMouth() {
 
 }
 
-speechSynthesis.onvoiceschanged = () => {
 
-    let voices = speechSynthesis.getVoices();
-
-    voices.forEach((voice, index) => {
-        console.log(index + ": " + voice.name);
-    });
-
-};
 
 function startTalking(){
 
