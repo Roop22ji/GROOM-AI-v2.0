@@ -900,19 +900,10 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
-    window.speechSynthesis.getVoices();
-
-    const groom = document.getElementById("groom-helper");
-
-    if (!groom || !groom.classList.contains("show")) {
+    if (!window.speechSynthesis) {
+        console.log("Speech synthesis not available");
         return;
     }
-
-    if (!("speechSynthesis" in window)) {
-        console.log("Speech not supported");
-        return;
-    }
-
 
     const speech = new SpeechSynthesisUtterance(text);
 
@@ -920,41 +911,17 @@ function speakGroom(text) {
     speech.rate = 1;
     speech.pitch = 1;
 
-
     speech.onstart = () => {
-
-        const head = document.querySelector(".groom-head");
-
-        if (head) {
-            head.classList.add("speaking");
-        }
-
+        startTalking();
     };
-
 
     speech.onend = () => {
-
-        const head = document.querySelector(".groom-head");
-
-        if (head) {
-            head.classList.remove("speaking");
-        }
-
+        stopTalking();
     };
 
-
-    // Load voices safely
-    let voices = window.speechSynthesis.getVoices();
-
-    if (voices.length > 0) {
-        speech.voice = voices[0];
-    }
-
-
     window.speechSynthesis.cancel();
-    setTimeout(() => {
-        window.speechSynthesis.speak(speech);
-    }, 200);
+    window.speechSynthesis.speak(speech);
+
 }
 
 
