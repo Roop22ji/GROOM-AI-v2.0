@@ -902,33 +902,37 @@ function groomExpression(expression){
 
 function speakGroom(text) {
 
+    alert("Voice function running");
 
-    console.log("GROOM VOICE STARTED", text);
-    alert("GROOM VOICE STARTED");
-    
-
-    if (!window.speechSynthesis) return;
-
-    window.speechSynthesis.cancel();
-
-    const speech = new SpeechSynthesisUtterance();
-    speech.text = text.substring(0, 200);   // limit for testing
-    speech.lang = navigator.language || "en-US";
-    speech.rate = 1;
-    speech.pitch = 1;
-
-    const voices = speechSynthesis.getVoices();
-
-    if (voices.length) {
-        speech.voice = voices.find(v => v.lang.startsWith("en")) || voices[0];
+    if (!window.speechSynthesis) {
+        alert("No speech synthesis");
+        return;
     }
 
-    speech.onstart = startTalking;
-    speech.onend = stopTalking;
-    speech.onerror = stopTalking;
+    const speech = new SpeechSynthesisUtterance("Hello, I am Groom AI");
 
-    speechSynthesis.speak(speech);
+    speech.lang = "en-US";
+
+    speech.onstart = () => {
+        alert("Speech started");
+        startTalking();
+    };
+
+    speech.onend = () => {
+        alert("Speech ended");
+        stopTalking();
+    };
+
+    speech.onerror = (e) => {
+        alert("Speech error: " + e.error);
+    };
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(speech);
 }
+
+
+
 
 window.speechSynthesis.onvoiceschanged = () => {
     console.log(
