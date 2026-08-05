@@ -13,6 +13,19 @@ const fileInput = document.getElementById("fileInput");
 let stopGeneration = false;
 let isGenerating = false;
 
+let groomUserId = localStorage.getItem("groom_user_id");
+
+if (!groomUserId) {
+
+    groomUserId = crypto.randomUUID();
+
+    localStorage.setItem(
+        "groom_user_id",
+        groomUserId
+    );
+
+}
+
 function scrollBottom() {
     chat.scrollTop = chat.scrollHeight;
 }
@@ -156,7 +169,7 @@ function addBotMessage(text) {
 
 }
 
-async function typeBotMessage(text) {
+async function typeBotMessage(text, pdf = null) {
 
     const wrapper = document.createElement("div");
 
@@ -201,7 +214,26 @@ async function typeBotMessage(text) {
 
         current += words[i] + " ";
 
-        bubble.innerHTML = marked.parse(current);
+        let pdfButton = "";
+
+        if (pdf) {
+
+            pdfButton = `
+                <br>
+                <div class="pdf-download">
+                    📄 PDF Ready
+                    <br><br>
+                    <a href="${pdf}" 
+                    target="_blank"
+                    download>
+                    ⬇️ Download PDF
+                    </a>
+                </div>
+            `;
+
+        }
+
+        bubble.innerHTML = marked.parse(current) + pdfButton;
 
         scrollBottom();
 
@@ -333,15 +365,20 @@ async function sendMessage() {
         const response = await fetch("/chat", {
 
             method: "POST",
-
+        
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "X-User-ID": groomUserId
             },
-
+        
             body: JSON.stringify({
+        
                 message: text,
+        
                 image: imageToSend,
+        
                 pdf: pdfToSend
+        
             })
         });
 
@@ -358,7 +395,7 @@ async function sendMessage() {
 
         speakGroom(data.reply);
 
-        await typeBotMessage(data.reply);
+        const botMessage = await typeBotMessage(data.reply, data.pdf);
 
         
 
@@ -430,7 +467,13 @@ async function sendMessage() {
 
 async function loadChatList() {
 
-    const response = await fetch("/chat_list");
+    const response = await fetch("/chat_list", {
+
+        headers:{
+            "X-User-ID": groomUserId
+        }
+    
+    });
     const chats = await response.json();
 
     const chatList = document.getElementById("chatList");
@@ -459,7 +502,13 @@ async function loadChatList() {
                 return;
         
             await fetch("/delete_chat/" + chatItem.id, {
-                method: "POST"
+
+                method:"POST",
+            
+                headers:{
+                    "X-User-ID": groomUserId
+                }
+            
             });
         
             // Clear current screen
@@ -496,7 +545,13 @@ async function loadChat(chatId) {
 
     sessionStorage.setItem("currentChat", chatId);
 
-    const response = await fetch("/load_chat/" + chatId);
+    const response = await fetch("/load_chat/" + chatId, {
+
+        headers:{
+            "X-User-ID": groomUserId
+        }
+    
+    });
 
     const messages = await response.json();
 
