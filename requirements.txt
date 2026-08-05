@@ -8,3 +8,4 @@ python-dotenv==1.0.1
 huggingface_hub
 edge-tts
 reportlab
+fpdf2==2.8.3
