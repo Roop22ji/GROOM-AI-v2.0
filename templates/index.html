@@ -37,23 +37,20 @@
 
 
     <header class="header">
-
-        <button class="menu-btn" id="menuBtn">☰</button>
-    
-        <div class="left">
-    
-            <div class="logo">🚀</div>
-    
-            <div>
-    
+        <div class="header-left">
+            <button class="menu-btn" id="menuBtn" aria-label="Open chats">☰</button>
+            <div class="brand-mark logo" title="GROOM AI">✦</div>
+            <div class="brand-copy">
                 <h2>GROOM AI</h2>
-    
-                <span>🟢 Online</span>
-    
+                <span>AI Assistant</span>
             </div>
-    
         </div>
-    
+
+        <div class="header-actions">
+            <button class="model-pill">GROOM 1.0⌄</button>
+            <button class="pro-pill">✦ PRO</button>
+            <button id="videoCallBtn" class="menu-btn" aria-label="Live mode">◉</button>
+        </div>
     </header>
 
     <div class="chat-container">
@@ -61,13 +58,55 @@
         <main id="chat-box">
     
             <div id="welcome" class="welcome">
-    
-                <div class="welcome-logo" id="welcomeRocket">🚀</div>
-    
-                <h1>Welcome to GROOM AI</h1>
-    
-                <p>Ask anything. I'm always ready to help.</p>
-    
+                <div class="ai-core" id="welcomeRocket" aria-label="GROOM AI core">
+                    <span></span><i></i><b></b>
+                </div>
+                <h1>Hello, I'm <strong>GROOM</strong></h1>
+                <p>Your intelligent AI companion</p>
+
+                <div class="welcome-card featured-card" onclick="quickPrompt('Help me build an application')">
+                    <div class="card-icon">✦</div>
+                    <div class="card-copy">
+                        <strong>Build with GROOM</strong>
+                        <small>Plan, code and improve your next idea</small>
+                    </div>
+                    <span class="card-arrow">↗</span>
+                </div>
+
+                <div class="welcome-grid">
+                    <button class="welcome-card" onclick="quickPrompt('Help me write code')">
+                        <span class="card-icon">⌘</span>
+                        <span class="card-copy"><strong>Code Helper</strong><small>Build & debug</small></span>
+                        <span class="card-arrow">↗</span>
+                    </button>
+                    <button
+                        class="welcome-card"
+                        id="webSearchCard"
+                        type="button"
+                    >
+                        <span class="card-icon">🌐</span>
+
+                        <span class="card-copy">
+                            <strong>Web Search</strong>
+                            <small>Find current information</small>
+                        </span>
+
+                        <span class="card-arrow">↗</span>
+                    </button>
+                </div>
+
+                <div class="welcome-grid">
+                    <button class="welcome-card" onclick="quickPrompt('Summarize this chat')">
+                        <span class="card-icon">▤</span>
+                        <span class="card-copy"><strong>Summarize</strong><small>Quick answers</small></span>
+                        <span class="card-arrow">↗</span>
+                    </button>
+                    <button class="welcome-card" onclick="quickPrompt('Explain this simply')">
+                        <span class="card-icon">◌</span>
+                        <span class="card-copy"><strong>Explain</strong><small>Make it simple</small></span>
+                        <span class="card-arrow">↗</span>
+                    </button>
+                </div>
             </div>
     
         </main>
@@ -81,8 +120,7 @@
             <div id="imagePreviewContainer"></div>
     
             <div class="composer">
-    
-                <label for="fileInput" id="attachBtn">📎</label>
+                <label for="fileInput" id="attachBtn" title="Attach image or PDF">＋</label>
     
                 <input
                     type="file"
@@ -98,6 +136,7 @@
                     autocomplete="off"
                 >
     
+                <button id="micBtn" class="composer-tool" type="button" title="Voice">⌁</button>
                 <button id="sendBtn">➤</button>
     
             </div>
@@ -110,6 +149,26 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="{{ url_for('static', filename='script.js') }}"></script>
+<script>
+function quickPrompt(text){
+    const el=document.getElementById('message');
+    if(!el) return;
+    el.value=text;
+    el.focus();
+    if(typeof sendMessage==='function') sendMessage();
+}
+
+const mic=document.getElementById('micBtn');
+if(mic && 'webkitSpeechRecognition' in window){
+    mic.addEventListener('click',()=>{
+        const r=new webkitSpeechRecognition();
+        r.lang='en-US';
+        r.interimResults=false;
+        r.onresult=e=>{ document.getElementById('message').value=e.results[0][0].transcript; };
+        r.start();
+    });
+}
+</script>
 
 <div id="cursor-glow"></div>
 
@@ -234,7 +293,24 @@
 
 </div>
 
+<div id="videoModal" class="video-modal">
 
+    <div class="video-window">
+
+        <video
+            id="camera"
+            autoplay
+            playsinline
+            muted
+        ></video>
+
+        <button id="closeVideo">
+            End Call
+        </button>
+
+    </div>
+
+</div>
 
 
 
