@@ -12,6 +12,7 @@ const fileInput = document.getElementById("fileInput");
 
 let stopGeneration = false;
 let isGenerating = false;
+let latestFrame = "";
 
 let groomUserId = localStorage.getItem("groom_user_id");
 
@@ -372,13 +373,15 @@ async function sendMessage() {
             },
         
             body: JSON.stringify({
-        
+
                 message: text,
-        
+            
                 image: imageToSend,
-        
-                pdf: pdfToSend
-        
+            
+                pdf: pdfToSend,
+            
+                live_image: latestFrame
+            
             })
         });
 
@@ -393,7 +396,15 @@ async function sendMessage() {
 
         thinking.remove();
 
-        speakGroom(data.reply);
+        if (data.song) {
+
+            playSongAudio(data.reply);
+        
+        } else {
+        
+            speakGroom(data.reply);
+        
+        }
 
         const botMessage = await typeBotMessage(data.reply, data.pdf);
 
@@ -701,6 +712,18 @@ sendBtn.addEventListener("click", () => {
 
 document.addEventListener("DOMContentLoaded", () => {
 
+    // ==========================
+    // GROOM VIDEO CALL
+    // ==========================
+
+    const videoCallBtn = document.getElementById("videoCallBtn");
+
+    if (videoCallBtn) {
+        videoCallBtn.onclick = () => {
+            window.location.href = "/gemini_live";
+        };
+    }
+
     const glow = document.getElementById("cursor-glow");
 
     if (!glow) {
@@ -714,6 +737,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
 });
+
+
+
+
+
+
+    
+
 
 
 
@@ -1059,4 +1090,446 @@ function stopTalking(){
         head.classList.remove("speaking");
     }
 
+}
+
+// ==========================
+// GROOM SONG AUDIO
+// ==========================
+
+async function playSongAudio(lyrics){
+
+    const response = await fetch("/song_voice",{
+
+        method:"POST",
+
+        headers:{
+            "Content-Type":"application/json"
+        },
+
+        body:JSON.stringify({
+            text:lyrics
+        })
+
+    });
+
+
+    const blob = await response.blob();
+
+    const audioURL = URL.createObjectURL(blob);
+
+
+    const audio = document.createElement("audio");
+
+    audio.controls = true;
+
+    audio.src = audioURL;
+
+
+    const message = document.createElement("div");
+
+    message.className = "message bot-row";
+
+
+    message.innerHTML = `
+        <div class="avatar ai-avatar">🚀</div>
+        <div class="bubble bot">
+            🎵 Original Song<br><br>
+            ${marked.parse(lyrics)}
+        </div>
+    `;
+
+
+    message.querySelector(".bubble").appendChild(audio);
+
+
+    chat.appendChild(message);
+
+    scrollBottom();
+
+
+    audio.onplay = ()=>{
+
+        startTalking();
+
+    };
+
+
+    audio.onended = ()=>{
+
+        stopTalking();
+
+    };
+
+
+    audio.play();
+
+}
+
+
+
+// =========================================================
+// GROOM HOME PAGE ACTIONS
+// =========================================================
+function quickPrompt(text) {
+    if (!input) return;
+    input.value = text;
+    input.focus();
+    sendMessage();
+}
+
+window.quickPrompt = quickPrompt;
+
+// Make the welcome AI core act like a real launcher.
+const welcomeCore = document.getElementById("welcomeRocket");
+if (welcomeCore) {
+    welcomeCore.addEventListener("click", () => {
+        input.focus();
+        input.placeholder = "Ask GROOM anything...";
+        welcomeCore.classList.add("core-active");
+        setTimeout(() => welcomeCore.classList.remove("core-active"), 700);
+    });
+}
+
+// Voice input for the homepage composer.
+const micBtn = document.getElementById("micBtn");
+let groomRecognition = null;
+let groomListening = false;
+
+if (micBtn) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+        groomRecognition = new SpeechRecognition();
+        groomRecognition.lang = navigator.language || "en-US";
+        groomRecognition.interimResults = false;
+        groomRecognition.continuous = false;
+
+        groomRecognition.onstart = () => {
+            groomListening = true;
+            micBtn.classList.add("listening");
+            micBtn.textContent = "●";
+            input.placeholder = "Listening...";
+        };
+
+        groomRecognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            input.value = transcript;
+            input.focus();
+        };
+
+        groomRecognition.onerror = () => {
+            showGroomToast("Voice input could not start. Check microphone permission.");
+        };
+
+        groomRecognition.onend = () => {
+            groomListening = false;
+            micBtn.classList.remove("listening");
+            micBtn.textContent = "⌁";
+            input.placeholder = "Message GROOM AI...";
+        };
+
+        micBtn.addEventListener("click", () => {
+            if (groomListening) {
+                groomRecognition.stop();
+            } else {
+                try { groomRecognition.start(); }
+                catch (_) {}
+            }
+        });
+    } else {
+        micBtn.addEventListener("click", () => {
+            showGroomToast("Voice input is not supported by this browser.");
+        });
+    }
+}
+
+// Small feedback toast used by homepage controls.
+function showGroomToast(message) {
+    let toast = document.getElementById("groom-toast");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "groom-toast";
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add("show");
+    clearTimeout(window.groomToastTimer);
+    window.groomToastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
+}
+window.showGroomToast = showGroomToast;
+
+// Header controls.
+const proPill = document.querySelector(".pro-pill");
+if (proPill) {
+    proPill.addEventListener("click", () => {
+        showGroomToast("PRO mode is coming soon.");
+    });
+}
+
+const modelPill = document.querySelector(".model-pill");
+if (modelPill) {
+    modelPill.addEventListener("click", () => {
+        showGroomToast("GROOM 1.0 is the active model.");
+    });
+}
+
+// Prevent Enter from submitting unexpectedly while keeping the existing
+// sendMessage flow intact.
+if (input) {
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            if (!isGenerating) sendMessage();
+        }
+    });
+}
+
+
+// ======================================================
+// GROOM WEB SEARCH
+// ======================================================
+
+async function groomWebSearch(query) {
+
+    query = (query || "").trim();
+
+    if (!query) {
+        console.log("❌ Empty web search query");
+        return;
+    }
+
+    console.log("🌐 Starting web search:", query);
+
+    // Show thinking message
+    const thinking = addMessage("assistant", "🌐 Searching the web...");
+
+    try {
+
+        const response = await fetch("/web_search", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                query: query
+            })
+        });
+
+        console.log("🌐 Web search HTTP status:", response.status);
+
+        // Read response safely
+        const data = await response.json();
+
+        console.log("🌐 Web search response:", data);
+
+        // Remove thinking message
+        if (thinking && thinking.remove) {
+            thinking.remove();
+        }
+
+        // ------------------------------------------
+        // SERVER ERROR
+        // ------------------------------------------
+
+        if (!response.ok || !data.success) {
+
+            const errorMessage =
+                data.reply ||
+                data.error ||
+                "Web search failed.";
+
+            addMessage(
+                "assistant",
+                "⚠️ " + errorMessage
+            );
+
+            return;
+        }
+
+        // ------------------------------------------
+        // GEMINI ANSWER
+        // ------------------------------------------
+
+        const reply = data.reply || "No answer was generated.";
+
+        addMessage(
+            "assistant",
+            reply
+        );
+
+        // ------------------------------------------
+        // SOURCES
+        // ------------------------------------------
+
+        const sources = Array.isArray(data.sources)
+            ? data.sources
+            : [];
+
+        if (sources.length > 0) {
+
+            const sourceHTML = document.createElement("div");
+
+            sourceHTML.className = "web-sources";
+
+            let html = `
+                <div class="web-sources-title">
+                    🌐 Web Sources
+                </div>
+            `;
+
+            sources.forEach((source, index) => {
+
+                if (!source) return;
+
+                const title =
+                    source.title ||
+                    `Source ${index + 1}`;
+
+                const snippet =
+                    source.snippet ||
+                    "";
+
+                const url =
+                    source.url ||
+                    "";
+
+                html += `
+                    <div class="web-source">
+
+                        <div class="web-source-number">
+                            ${index + 1}
+                        </div>
+
+                        <div class="web-source-content">
+
+                            <div class="web-source-title">
+                                ${escapeHTML(title)}
+                            </div>
+
+                            ${
+                                snippet
+                                    ? `
+                                    <div class="web-source-snippet">
+                                        ${escapeHTML(snippet)}
+                                    </div>
+                                    `
+                                    : ""
+                            }
+
+                            ${
+                                url
+                                    ? `
+                                    <a
+                                        class="web-source-link"
+                                        href="${escapeAttribute(url)}"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        Open source ↗
+                                    </a>
+                                    `
+                                    : ""
+                            }
+
+                        </div>
+
+                    </div>
+                `;
+            });
+
+            sourceHTML.innerHTML = html;
+
+            // Add sources to the chat
+            const chatContainer =
+                document.querySelector("#chatMessages") ||
+                document.querySelector(".chat-messages") ||
+                document.querySelector("#messages");
+
+            if (chatContainer) {
+
+                chatContainer.appendChild(sourceHTML);
+
+                chatContainer.scrollTop =
+                    chatContainer.scrollHeight;
+            }
+        }
+
+        console.log(
+            "✅ Web search completed:",
+            sources.length,
+            "sources"
+        );
+
+    } catch (error) {
+
+        console.error(
+            "❌ WEB SEARCH ERROR:",
+            error
+        );
+
+        if (thinking && thinking.remove) {
+            thinking.remove();
+        }
+
+        addMessage(
+            "assistant",
+            "⚠️ Web Search Error: " + error.message
+        );
+    }
+}
+
+
+// ======================================================
+// HTML SAFETY HELPERS
+// ======================================================
+
+function escapeHTML(value) {
+
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+function escapeAttribute(value) {
+
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+const webSearchCard = document.getElementById("webSearchCard");
+
+if (webSearchCard) {
+
+    webSearchCard.addEventListener("click", function () {
+
+        // Put the search mode into the chat input
+        const input =
+            document.getElementById("userInput") ||
+            document.getElementById("messageInput") ||
+            document.querySelector("textarea") ||
+            document.querySelector("input[type='text']");
+
+        if (!input) {
+            console.error("❌ Chat input not found");
+            return;
+        }
+
+        input.value = "";
+
+        input.placeholder = "Search the web...";
+
+        input.focus();
+
+        // Mark web search mode
+        window.groomWebSearchMode = true;
+
+        console.log("🌐 Web Search mode enabled");
+    });
 }
