@@ -20,3 +20,7 @@ huggingface_hub
 edge-tts
 reportlab
 fpdf2==2.8.3
+
+beautifulsoup4
+fpdf2
+deepgram-sdk
