@@ -1,0 +1,15 @@
+{
+    "facts": [
+        "User is testing Groom memory",
+        "User name is rupinder kumar"
+    ],
+    "preferences": [
+        "Favorite programming language is Python",
+        "Wakes up at 7:00 AM and has classes from 2:00 PM to 8:40 PM.",
+        "Wake up time is 8 am."
+    ],
+    "projects": [
+        "The user is building an Android assistant called Groom.",
+        "The user is preparing for the JEE exam and wants to create a study timetable."
+    ]
+}
