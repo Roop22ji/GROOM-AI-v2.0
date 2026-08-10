@@ -84,7 +84,85 @@ CHAT_FOLDER = "chat_history"
 
 os.makedirs(CHAT_FOLDER, exist_ok=True)
 
+# ==========================
+# MEMORY SYSTEM
+# ==========================
 
+MEMORY_FOLDER = "memory"
+
+os.makedirs(
+    MEMORY_FOLDER,
+    exist_ok=True
+)
+
+
+def get_memory_file():
+
+    user_id = session.get("user_id")
+
+    if not user_id:
+        user_id = secrets.token_hex(16)
+        session["user_id"] = user_id
+
+
+    folder = os.path.join(
+        MEMORY_FOLDER,
+        user_id
+    )
+
+    os.makedirs(
+        folder,
+        exist_ok=True
+    )
+
+
+    return os.path.join(
+        folder,
+        "memory.json"
+    )
+
+
+
+def load_memory():
+
+    file = get_memory_file()
+
+
+    if os.path.exists(file):
+
+        with open(
+            file,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            return json.load(f)
+
+
+    return {
+        "facts": [],
+        "preferences": [],
+        "projects": []
+    }
+
+
+
+def save_memory(memory):
+
+    file = get_memory_file()
+
+
+    with open(
+        file,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            memory,
+            f,
+            indent=4
+        )
 
 def get_user_folder():
 
@@ -749,7 +827,148 @@ GEMINI_VISION_URL = (
 )
 
 
+def update_memory(user_message):
 
+    memory = load_memory()
+
+    text = user_message.lower()
+
+
+    # Name detection
+    if "my name is" in text:
+
+        name = user_message.split(
+            "my name is"
+        )[1].strip()
+
+        memory["facts"].append(
+            "User name is " + name
+        )
+
+
+    # Project detection
+    if "i am building" in text:
+
+        project = user_message.split(
+            "i am building"
+        )[1].strip()
+
+        memory["projects"].append(
+            project
+        )
+
+
+    save_memory(memory)
+
+
+def ask_gemini_for_memory(user_message):
+
+    prompt = f"""
+You are a memory manager.
+
+Read the user's message.
+
+Decide if anything should be remembered.
+
+Remember only useful long-term information:
+- name
+- preferences
+- hobbies
+- projects
+- important facts
+
+Do NOT remember:
+- temporary questions
+- random conversations
+- greetings
+
+Return ONLY JSON.
+
+Format:
+
+{{
+ "save": true,
+ "category": "facts",
+ "memory": "text to remember"
+}}
+
+If nothing important:
+
+{{
+ "save": false
+}}
+
+USER MESSAGE:
+
+{user_message}
+"""
+
+
+    payload = {
+        "contents":[
+            {
+                "parts":[
+                    {
+                        "text":prompt
+                    }
+                ]
+            }
+        ]
+    }
+
+
+    response = requests.post(
+        GEMINI_URL,
+        json=payload,
+        timeout=20
+    )
+
+
+    result = response.json()
+
+
+    text = result["candidates"][0]["content"]["parts"][0]["text"]
+
+
+    text = text.replace(
+        "```json",
+        ""
+    ).replace(
+        "```",
+        ""
+    ).strip()
+
+
+    return json.loads(text)
+
+
+def search_memory(query):
+
+    memory = load_memory()
+
+    results = []
+
+    words = query.lower().split()
+
+
+    for category in memory:
+
+        for item in memory[category]:
+
+            item_lower = item.lower()
+
+            for word in words:
+
+                if word in item_lower:
+
+                    results.append(
+                        item
+                    )
+
+                    break
+
+
+    return results
 
 
 # ==========================
@@ -764,6 +983,45 @@ def chat():
         data = request.get_json(silent=True) or {}
 
         user_message = data.get("message", "").strip()
+        try:
+
+            memory_result = ask_gemini_for_memory(
+                user_message
+            )
+
+
+            if memory_result.get("save"):
+
+                memory = load_memory()
+
+
+                category = memory_result.get(
+                    "category",
+                    "facts"
+                )
+
+
+                memory[category].append(
+                    memory_result["memory"]
+                )
+
+
+                save_memory(memory)
+
+
+                print(
+                    "🧠 MEMORY SAVED:",
+                    memory_result["memory"]
+                )
+
+
+        except Exception as e:
+
+            print(
+                "MEMORY ERROR:",
+                e
+            )
+
         image = data.get("image")
         pdf = data.get("pdf")
         live_image = data.get("live_image")
@@ -997,13 +1255,82 @@ def chat():
                 )
 
                 web_results = []
+                
+
+        # ==========================
+        # LOAD USER MEMORY
+        # ==========================
+
+        user_memory = load_memory()
+
+        memory_text = ""
+
+        if user_memory:
+
+            memory_text = """
+        USER MEMORY:
+
+        Facts:
+        {facts}
+
+        Preferences:
+        {preferences}
+
+        Projects:
+        {projects}
+
+        """.format(
+                facts="\n".join(user_memory["facts"]),
+                preferences="\n".join(user_memory["preferences"]),
+                projects="\n".join(user_memory["projects"])
+            )
+
+        relevant_memory = search_memory(
+            user_message
+        )
+
+
+        memory_text = ""
+
+        if relevant_memory:
+
+            memory_text = """
+
+        Relevant memories about this user:
+
+        """ + "\n".join(relevant_memory)
+
+
+
+        identity_rule = """
+
+        GROOM IDENTITY RULE:
+
+        If the user asks:
+        "Who developed you?"
+        "Who created you?"
+        "Who made you?"
+        "Who is your developer?"
+
+        You MUST answer:
+
+        "I was developed by Rupinder Kumar."
+
+        Never ask the user's name.
+        Never give another name.
+
+        """
 
         # =====================================================
         # BUILD BASE PROMPT
         # =====================================================
 
         prompt = (
-            SYSTEM_PROMPT
+        SYSTEM_PROMPT
+        +
+        memory_text
+        +
+        identity_rule
             +
             """
 
@@ -2312,7 +2639,26 @@ def gemini_camera():
 
         })
 
+@app.route("/test_memory")
+def test_memory():
+
+    memory = load_memory()
+
+    memory["facts"].append(
+        "User is testing Groom memory"
+    )
+
+    save_memory(memory)
+
+    return jsonify(memory)
+
+
+
+
+
 
 
 if __name__ == "__main__":
     socketio.run(app, debug=True)
+
+# init_memory()
