@@ -13,7 +13,7 @@ const fileInput = document.getElementById("fileInput");
 let stopGeneration = false;
 let isGenerating = false;
 let latestFrame = "";
-
+let currentAudio = null;
 let groomUserId = localStorage.getItem("groom_user_id");
 
 if (!groomUserId) {
@@ -1009,20 +1009,31 @@ async function speakGroom(text){
     const audioURL = URL.createObjectURL(blob);
 
 
-    const audio = new Audio(audioURL);
+    if(currentAudio){
 
-
-    audio.onplay = ()=>{
+        currentAudio.pause();
+    
+        currentAudio.currentTime = 0;
+    
+    }
+    
+    
+    currentAudio = new Audio(audioURL);
+    
+    
+    currentAudio.onplay = ()=>{
         startTalking();
     };
-
-
-    audio.onended = ()=>{
+    
+    
+    currentAudio.onended = ()=>{
         stopTalking();
+    
+        currentAudio = null;
     };
-
-
-    audio.play();
+    
+    
+    currentAudio.play();
 
 }
 
