@@ -1,1554 +1,2664 @@
-const chat = document.getElementById("chat-box");
-const chatBox = document.getElementById("chat-box");
-const input = document.getElementById("message");
-const sendBtn = document.getElementById("sendBtn");
-const imagePreviewContainer =
-    document.getElementById("imagePreviewContainer");
+from flask import Flask, render_template, request, jsonify, session
+import os
+import json
+import uuid
+import io
+import base64
+import re
+import asyncio
+import requests
+import secrets
+import time
+
+from flask_socketio import SocketIO, emit
+import websockets
 
 
-const fileInput = document.getElementById("fileInput");
+from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+from pypdf import PdfReader
+
+import edge_tts
+
+from fpdf import FPDF
+
+from prompt_builder import build_prompt
+from ai_image_generator import generate_ai_image
+from deepgram import DeepgramClient
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+
+print("Deepgram key loaded:", bool(DEEPGRAM_API_KEY))
+
+# ==========================
+# ENVIRONMENT
+# ==========================
+
+load_dotenv()
+
+API_KEY = os.environ["GEMINI_API_KEY"]
+
+print("GEMINI KEY START:", API_KEY[:15])
+
+PIXABAY_API_KEY = os.environ["PIXABAY_API_KEY"]
+
+
+# ==========================
+# FLASK
+# ==========================
+
+app = Flask(__name__)
+
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+app.secret_key = "replace_this_with_a_long_random_secret_string"
+
+app.config["SESSION_PERMANENT"] = True
+
+app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 365
+
+
+# ==========================
+# USER ID SYSTEM
+# ==========================
+
+@app.before_request
+def create_user():
+
+    user_id = request.headers.get("X-User-ID")
+
+    if user_id:
+        session["user_id"] = user_id
+
+
+# ==========================
+# CHAT STORAGE
+# ==========================
+
+CHAT_FOLDER = "chat_history"
+
+os.makedirs(CHAT_FOLDER, exist_ok=True)
+
+# ==========================
+# MEMORY SYSTEM
+# ==========================
+
+MEMORY_FOLDER = "memory"
+
+os.makedirs(
+    MEMORY_FOLDER,
+    exist_ok=True
+)
+
+
+def get_memory_file():
+
+    user_id = session.get("user_id")
+
+    if not user_id:
+        user_id = secrets.token_hex(16)
+        session["user_id"] = user_id
+
+
+    folder = os.path.join(
+        MEMORY_FOLDER,
+        user_id
+    )
+
+    os.makedirs(
+        folder,
+        exist_ok=True
+    )
+
+
+    return os.path.join(
+        folder,
+        "memory.json"
+    )
 
 
 
-let stopGeneration = false;
-let isGenerating = false;
-let latestFrame = "";
-let currentAudio = null;
-let groomUserId = localStorage.getItem("groom_user_id");
+def load_memory():
 
-if (!groomUserId) {
+    file = get_memory_file()
 
-    groomUserId = crypto.randomUUID();
 
-    localStorage.setItem(
-        "groom_user_id",
-        groomUserId
-    );
+    if os.path.exists(file):
 
-}
+        with open(
+            file,
+            "r",
+            encoding="utf-8"
+        ) as f:
 
-function scrollBottom() {
-    chat.scrollTop = chat.scrollHeight;
-}
+            return json.load(f)
 
-function removeWelcome() {
-    const welcome = document.getElementById("welcome");
-    if (welcome) {
-        welcome.remove();
+
+    return {
+        "facts": [],
+        "preferences": [],
+        "projects": []
     }
-}
 
-let selectedImage = null;
-let selectedPDF = null;
 
-fileInput.addEventListener("change", function () {
 
-    
+def save_memory(memory):
 
-    const file = this.files[0];
+    file = get_memory_file()
 
-    
 
-    if (!file) return;
+    with open(
+        file,
+        "w",
+        encoding="utf-8"
+    ) as f:
 
-    // Clear previous selections
-    selectedImage = null;
-    selectedPDF = null;
+        json.dump(
+            memory,
+            f,
+            indent=4
+        )
 
-    if (file.type.startsWith("image/")) {
+def get_user_folder():
 
-        const reader = new FileReader();
+    user_id = session.get("user_id")
 
-        reader.onload = function (e) {
+    if not user_id:
+        user_id = secrets.token_hex(16)
+        session["user_id"] = user_id
 
-            selectedImage = e.target.result;
 
-            imagePreviewContainer.innerHTML = `
-                <div class="preview-box">
-                    🖼️ <strong>${file.name}</strong>
-                </div>
-            `;
-            const title = document.querySelector(".panel-title");
+    folder = os.path.join(
+        CHAT_FOLDER,
+        user_id
+    )
 
-            
 
-            if (title) {
-                title.innerHTML = "📄 PDF Assistant";
-                
-            }
+    os.makedirs(
+        folder,
+        exist_ok=True
+    )
 
-            
+    return folder
 
-        };
 
-        reader.readAsDataURL(file);
 
-    }
+def get_chat_file():
 
-    if (file.name.toLowerCase().endsWith(".pdf")) {
+    if "current_chat" not in session:
 
+        session["current_chat"] = str(
+            uuid.uuid4()
+        )
 
-        
 
-        
-    
-        const title = document.querySelector(".panel-title");
-    
-        if (title) {
-            title.innerHTML = "📄 PDF Assistant";
-        }
+    return os.path.join(
+        get_user_folder(),
+        session["current_chat"] + ".json"
+    )
 
-        const btn = document.getElementById("summaryBtn");
 
-        
 
-        if (btn) {
-            btn.innerHTML = "📄 Summarize PDF";
-        }
+# ==========================
+# SAVE CHAT
+# ==========================
 
-        document.getElementById("fileBtn").innerHTML = "❓ Ask Questions";
 
-        document.getElementById("codeBtn").innerHTML = "📚 Extract Text";
+def save_chat():
 
-        
-    
-        const reader = new FileReader();
-    
-        reader.onload = function (e) {
-    
-            selectedPDF = e.target.result;
-    
-            imagePreviewContainer.innerHTML = `
-                <div class="preview-box">
-                    📄 <strong>${file.name}</strong>
-                </div>
-            `;
-    
-        };
-    
-        reader.readAsDataURL(file);
-    
-    }
+    file_path = get_chat_file()
 
-});
 
-function addUserMessage(text, image = null) {
+    data = {
 
-    let imageHTML = "";
+        "title":
+        session.get(
+            "current_chat_title",
+            "New Chat"
+        ),
 
-    if (image) {
-        imageHTML = `
-            <img src="${image}" class="user-image">
-        `;
-    }
 
-    chat.insertAdjacentHTML("beforeend", `
-        <div class="message user-row">
-            <div class="bubble user">
-                ${imageHTML}
-                <div>${text}</div>
-            </div>
-            <div class="avatar user-avatar">👤</div>
-        </div>
-    `);
-
-    scrollBottom();
-}
-
-function addBotMessage(text) {
-
-    chat.insertAdjacentHTML("beforeend", `
-        <div class="message bot-row">
-            <div class="avatar ai-avatar">🚀</div>
-            <div class="bubble bot">
-                ${marked.parse(text)}
-            </div>
-        </div>
-    `);
-
-    scrollBottom();
-
-}
-
-async function typeBotMessage(text, pdf = null) {
-
-    const wrapper = document.createElement("div");
-
-    wrapper.className = "message bot-row";
-
-    wrapper.innerHTML = `
-    <div class="avatar ai-avatar">🚀</div>
-    <div class="bubble bot"></div>
-  `;
-
-
-    chat.appendChild(wrapper);
-    const y = wrapper.offsetTop - 200; // adjust this value
-
-    chat.scrollTo({
-        top: y,
-        behavior: "smooth"
-    });
-
-    const messageTop = wrapper.offsetTop;
-
-    const bubble = wrapper.querySelector(".bubble");
-
-    let words = text.split(" ");
-
-    let current = "";
-
-    for (let i = 0; i < words.length; i++) {
-
-        if (stopGeneration) {
-
-            isGenerating = false;
-        
-            sendBtn.disabled = false;
-            sendBtn.innerHTML = "➤";
-        
-            input.placeholder = "Message GROOM AI...";
-            input.focus();
-        
-            return;
-        }
-
-        current += words[i] + " ";
-
-        let pdfButton = "";
-
-        if (pdf) {
-
-            pdfButton = `
-                <br>
-                <div class="pdf-download">
-                    📄 PDF Ready
-                    <br><br>
-                    <a href="${pdf}" 
-                    target="_blank"
-                    download>
-                    ⬇️ Download PDF
-                    </a>
-                </div>
-            `;
-
-        }
-
-        bubble.innerHTML = marked.parse(current) + pdfButton;
-
-        scrollBottom();
-
-        // Save the position where this AI message starts
-        if (i === words.length - 1) {
-
-            setTimeout(() => {
-
-                chat.scrollTo({
-                    top: messageTop,
-                    behavior: "smooth"
-                });
-                sendBtn.innerHTML = "➤";
-            }, 300);
-
-}
-
-        await new Promise(resolve => setTimeout(resolve, 30));
+        "messages":
+        session.get(
+            "conversation_history",
+            []
+        )
 
     }
 
-}
 
-async function sendMessage() {
-     
 
-    if (isGenerating) {
-        return;
-    }
-    isGenerating = true;
+    with open(
+        file_path,
+        "w",
+        encoding="utf-8"
+    ) as f:
 
-    sendBtn.disabled = true;
-    input.placeholder = "⏳ GROOM is replying...";
+        json.dump(
+            data,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
 
-    const imageToSend = selectedImage;
-    const pdfToSend = selectedPDF;
 
-    stopGeneration = false;
+    print(
+        "CHAT SAVED:",
+        file_path
+    )
 
-    sendBtn.innerHTML = "■";
 
-    const text = input.value.trim();
 
-    if (!text) {
+# ==========================
+# HOME
+# ==========================
 
-        isGenerating = false;
 
-        input.disabled = false;
-        sendBtn.disabled = false;
+@app.route("/")
+def home():
 
-        sendBtn.innerHTML = "➤";
+    return render_template(
+        "index.html"
+    )
 
-        return;
-    }
-    
 
-    const rocket = document.getElementById("welcomeRocket");
-    const welcome = document.getElementById("welcome");
+# ==========================
+# PDF CREATOR
+# ==========================
 
-    if (rocket && welcome) {
+def create_pdf(text):
 
-        rocket.classList.add("blast");
+    filename = "groom_ai_file.pdf"
 
-        setTimeout(() => {
-            welcome.classList.add("fade");
-        }, 700);
+    os.makedirs(
+        "static",
+        exist_ok=True
+    )
 
-        setTimeout(() => {
-            removeWelcome();
-        }, 1200);
+    path = os.path.join(
+        "static",
+        filename
+    )
 
-    } else {
 
-        removeWelcome();
+    # Remove unsupported characters
+    text = text.replace("\r", "")
 
-    }
-    addUserMessage(text, imageToSend);
 
-    input.value = "";
-    fileInput.value = "";
-    selectedImage = null;
-    imagePreviewContainer.innerHTML = "";
+    pdf = FPDF()
 
-    // Thinking bubble
-    const thinking = document.createElement("div");
+    pdf.set_auto_page_break(auto=True, margin=15)
 
-    thinking.className = "message bot-row";
+    pdf.add_page()
 
-    thinking.id = "thinking";
+    pdf.set_font("Helvetica", size=12)
 
-    const head = document.querySelector(".groom-head");
+    for line in text.split("\n"):
 
-    head.classList.remove("happy");
-    head.classList.add("thinking");
+        line = line.strip()
 
-    const bubble = document.querySelector(".groom-message");
+        if line:
 
-    if (bubble) {
-        bubble.innerHTML = "🤔 Thinking...";
-    }
+            pdf.multi_cell(
+                w=190,
+                h=8,
+                text=line
+            )
 
-    thinking.innerHTML = `
-        <div class="avatar ai-avatar">🚀</div>
-        <div class="bubble bot">
-            <span id="thinking-text">Thinking</span>
-        </div>
-    `;
+    pdf.output(path)
 
-    chat.appendChild(thinking);
 
-    scrollBottom();
+    return "/" + path
 
-    let dots = 0;
 
-    const animation = setInterval(() => {
+# ==========================
+# WEB SEARCH API
+# ==========================
 
-        dots = (dots + 1) % 4;
+@app.route("/web_search", methods=["POST"])
+def web_search_route():
 
-        const t = document.getElementById("thinking-text");
+    try:
 
-        if (t) {
-            t.innerHTML = "Thinking" + ".".repeat(dots);
-        }
+        data = request.get_json(silent=True) or {}
 
-    }, 400);
+        query = data.get("query", "").strip()
 
-    try {
+        if not query:
 
-        const response = await fetch("/chat", {
+            return jsonify({
+                "success": False,
+                "reply": "Please enter something to search."
+            }), 400
 
-            method: "POST",
-        
-            headers: {
-                "Content-Type": "application/json",
-                "X-User-ID": groomUserId
-            },
-        
-            body: JSON.stringify({
+        print()
+        print("================================")
+        print("🌐 WEB SEARCH:", query)
+        print("================================")
 
-                message: text,
-            
-                image: imageToSend,
-            
-                pdf: pdfToSend,
-            
-                live_image: latestFrame
-            
-            })
-        });
+        # --------------------------------
+        # SEARCH INTERNET
+        # --------------------------------
 
-        if (!response.ok) {
-            throw new Error("HTTP " + response.status);
-        }
-        
-        const data = await response.json();
-        console.log(data);
+        results = web_search(query)
 
-        clearInterval(animation);
+        if not results:
 
-        thinking.remove();
+            return jsonify({
+                "success": False,
+                "reply": "I couldn't find any web results."
+            }), 200
 
-        if (data.song) {
+        # --------------------------------
+        # FORMAT RESULTS FOR GEMINI
+        # --------------------------------
 
-            playSongAudio(data.reply);
-        
-        } else {
-        
-            speakGroom(data.reply);
-        
-        }
+        web_text = ""
 
-        const botMessage = await typeBotMessage(data.reply, data.pdf);
+        for i, result in enumerate(results, 1):
 
-        
+            web_text += f"""
+SOURCE {i}
 
-        isGenerating = false;
+TITLE:
+{result["title"]}
 
-        sendBtn.disabled = false;
-        input.disabled = false;
+DESCRIPTION:
+{result["snippet"]}
 
-        input.placeholder = "Message GROOM AI...";
+URL:
+{result["url"]}
 
-        sendBtn.innerHTML = "➤";
+-------------------------
+"""
 
-        input.focus();
+        # --------------------------------
+        # GEMINI PROMPT
+        # --------------------------------
 
-        const head = document.querySelector(".groom-head");
+        prompt = f"""
+You are GROOM AI.
 
-        head.classList.remove("thinking");
-        head.classList.add("happy");
+The server performed a live internet search for the user.
 
-        if (bubble) {
+USER QUERY:
+{query}
 
-            bubble.innerHTML = "😊 Done!";
-        
-            setTimeout(() => {
-                bubble.innerHTML = "Need anything else?";
-            }, 2000);
-        
-        }
+SEARCH RESULTS:
+{web_text}
 
-        if (data.images && data.images.length > 0) {
+Your job is to answer the user's query using the search results.
 
-            const html = data.images.map(img => `
-                <img src="${img}"
-                    class="search-image"
-                    onclick="openImage('${img}')">
-            `).join("");
+IMPORTANT RULES:
 
-            chat.insertAdjacentHTML(
-                "beforeend",
-                `<div class="message bot-row">
-                    <div class="avatar ai-avatar">🚀</div>
-                    <div class="bubble bot">${html}</div>
-                </div>`
-            );
+1. Use the search results as your evidence.
 
-        }
+2. If the user asks for "latest", "today", "recent",
+   "current", "this week", or similar, prioritize
+   results that appear to be recent.
 
-        loadChatList();
-    }
+3. For news questions, report the actual headlines
+   and facts contained in the search results.
 
-    catch (err) {
+4. Do NOT replace missing information with generic
+   suggestions such as:
+   "Check Reuters",
+   "Check TechCrunch",
+   "Check AI Weekly",
+   or "You can find more information online."
 
-        isGenerating = false;
+5. Do NOT say:
+   "I don't have real-time browsing."
 
-        sendBtn.disabled = false;
-        input.placeholder = "Message GROOM AI...";
-        input.focus();
+6. Do NOT say:
+   "I cannot browse the internet."
 
-        clearInterval(animation);
-    
-        thinking.remove();
-    
-        console.error("ERROR:", err);
-    
-        await typeBotMessage("⚠️ " + err.message);
-    }
+7. Do NOT pretend that you personally visited
+   the websites.
 
-}
+8. Do NOT invent headlines, dates, people, companies,
+   events, or facts.
 
-async function loadChatList() {
+9. If the search results genuinely do not contain
+   enough information to answer the question,
+   explicitly say:
+   "The search results did not contain enough
+   information to answer this reliably."
 
-    const response = await fetch("/chat_list", {
+10. When possible, organize news as:
 
-        headers:{
-            "X-User-ID": groomUserId
-        }
-    
-    });
-    const chats = await response.json();
+   • Headline
+   • What happened
+   • Why it matters
 
-    const chatList = document.getElementById("chatList");
-    chatList.innerHTML = "";
+11. Keep the answer concise but useful.
 
-    chats.forEach(chatItem => {
+12. The information below comes from the server's
+   live web search.
 
-        const div = document.createElement("div");
-        div.className = "chat-item";
+SEARCH RESULTS:
+{web_text}
+"""
 
-        const title = document.createElement("span");
-        title.textContent = chatItem.title;
-        title.style.flex = "1";
-
-        title.onclick = () => loadChat(chatItem.id);
-
-        const del = document.createElement("button");
-        del.innerHTML = "✕";
-        del.className = "delete-btn";
-
-        del.onclick = async (e) => {
-
-            e.stopPropagation();
-        
-            if (!confirm("Delete this chat?"))
-                return;
-        
-            await fetch("/delete_chat/" + chatItem.id, {
-
-                method:"POST",
-            
-                headers:{
-                    "X-User-ID": groomUserId
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": prompt
+                        }
+                    ]
                 }
-            
-            });
-        
-            // Clear current screen
-            chatBox.innerHTML = `
-                <div id="welcome" class="welcome">
-                    <div class="welcome-logo">🚀</div>
-                    <h1>Welcome to GROOM AI</h1>
-                    <p>Ask anything. I'm always ready to help.</p>
-                </div>
-            `;
-        
-            sessionStorage.removeItem("currentChat");
-        
-            // wait a little, then reload sidebar
-            setTimeout(() => {
-                loadChatList();
-            }, 300);
-        };
-
-        div.appendChild(title);
-        div.appendChild(del);
-
-        chatList.appendChild(div);
-
-    });
-
-}
-
-// ==========================
-// LOAD CHAT
-// ==========================
-
-async function loadChat(chatId) {
-
-    sessionStorage.setItem("currentChat", chatId);
-
-    const response = await fetch("/load_chat/" + chatId, {
-
-        headers:{
-            "X-User-ID": groomUserId
-        }
-    
-    });
-
-    const messages = await response.json();
-
-    // Clear current chat
-    chat.innerHTML = "";
-
-    // Show messages
-    messages.forEach(msg => {
-
-        if (msg.role === "user") {
-
-            addUserMessage(msg.text);
-
-        } else {
-
-            addBotMessage(msg.text);
-
+            ]
         }
 
-    });
-
-    scrollBottom();
-
-    // Close sidebar after selecting a chat
-    sidebar.classList.remove("show");
-
-}
-
-
-
-
-
-input.addEventListener("keydown", function (e) {
-
-    if (e.key === "Enter") {
-
-        sendMessage();
-
-    }
-
-});
-
-// ==========================
-// Mobile Keyboard Support
-// ==========================
-
-const inputArea = document.getElementById("input-area");
-
-function updateKeyboard() {
-
-    if (!window.visualViewport) return;
-
-    const vv = window.visualViewport;
-    const keyboardHeight = window.innerHeight - vv.height - vv.offsetTop;
-
-    if (keyboardHeight > 100) {
-        chat.scrollTop = chat.scrollHeight;
-    } else {
-        inputArea.style.bottom = "0px";
-    }
-}
-
-if (window.visualViewport) {
-    visualViewport.addEventListener("resize", updateKeyboard);
-    visualViewport.addEventListener("scroll", updateKeyboard);
-
-    input.addEventListener("focus", updateKeyboard);
-    input.addEventListener("blur", () => {
-        inputArea.style.bottom = "0px";
-    });
-}
-
-// Load saved chats
-loadChatList();
-
-
-
-// ==========================
-// SIDEBAR TOGGLE
-// ==========================
-
-const menuBtn = document.getElementById("menuBtn");
-const sidebar = document.getElementById("sidebar");
-
-menuBtn.addEventListener("click", () => {
-
-    sidebar.classList.toggle("show");
-
-});
-
-const backBtn = document.getElementById("backBtn");
-
-backBtn.addEventListener("click", () => {
-    sidebar.classList.remove("show");
-});
-
-// ==========================
-// NEW CHAT
-// ==========================
-
-async function newChat() {
-
-    await fetch("/new_chat", {
-
-        method: "POST"
-
-    });
-
-    // Clear chat window
-    chat.innerHTML = `
-        <div id="welcome" class="welcome">
-
-            <div class="welcome-logo">🚀</div>
-
-            <h1>Welcome to GROOM AI</h1>
-
-            <p>Ask anything. I'm always ready to help.</p>
-
-        </div>
-    `;
-
-    input.value = "";
-
-    loadChatList();
-
-    sidebar.classList.remove("show");
-
-}
-
-// ==========================
-// SEND / STOP BUTTON
-// ==========================
-
-sendBtn.addEventListener("click", () => {
-
-    if (sendBtn.innerHTML === "■") {
-
-        stopGeneration = true;
-
-    } else {
-
-        sendMessage();
-
-    }
-
-});
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    // ==========================
-    // GROOM VIDEO CALL
-    // ==========================
-
-    const videoCallBtn = document.getElementById("videoCallBtn");
-
-    if (videoCallBtn) {
-        videoCallBtn.onclick = () => {
-            window.location.href = "/gemini_live";
-        };
-    }
-
-    const glow = document.getElementById("cursor-glow");
-
-    if (!glow) {
-        console.log("cursor-glow not found");
-        return;
-    }
-
-    document.addEventListener("mousemove", (e) => {
-        glow.style.left = e.clientX + "px";
-        glow.style.top = e.clientY + "px";
-    });
-
-});
-
-
-
-
-
-
-    
-
-
-
-
-function openImage(src){
-
-    document.getElementById("viewerImage").src = src;
-
-    document.getElementById("imageViewer").style.display = "flex";
-
-}
-
-function closeImage(){
-
-    document.getElementById("imageViewer").style.display = "none";
-
-}
-
-// ==========================
-// GROOM ROBOT ACTIVATION
-// ==========================
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    const rocket = document.querySelector(".logo");
-    const groom = document.getElementById("groom-helper");
-    const panel = document.getElementById("groom-panel");
-    const head = document.querySelector(".groom-head");
-    const summaryBtn = document.getElementById("summaryBtn");
-
-    // // ==========================
-    // // SUMMARIZE PDF BUTTON
-    // // ==========================
-
-    // const summaryBtn = document.getElementById("summaryBtn");
-
-    // if (summaryBtn) {
-
-    //     summaryBtn.addEventListener("click", () => {
-
-    //         alert("Summarize button clicked!");
-
-    //     });
-
-    // }
-
-    if (rocket && groom) {
-
-        rocket.addEventListener("click", () => {
-
-            groom.classList.toggle("show");
-        
-            if (groom.classList.contains("show")) {
-                head.classList.remove("thinking");
-                head.classList.add("happy");
-            }
-        
-        });
-
-    }
-
-    if (groom && panel) {
-
-        const robot = document.querySelector(".groom-robot");
-
-        robot.addEventListener("click", function(e){
-
-            e.stopPropagation();
-
-            panel.classList.toggle("show");
-
-        });
-    
-
-        panel.addEventListener("click", function(e){
-
-            e.stopPropagation();
-        
-            if (e.target.id === "summaryBtn"){
-
-                input.value = "Summarize this PDF";
-            
-                panel.classList.remove("show");
-            
-                sendMessage();
-            
-                return;
-            
-            }
-        
-            else if (e.target.id === "fileBtn"){
-
-                input.value = "Answer my questions about this PDF";
-            
-                panel.classList.remove("show");
-            
-                sendMessage();
-            
-                return;
-            
-            }
-
-            else if (e.target.id === "codeBtn"){
-
-                input.value = "Extract all text from this PDF";
-
-                panel.classList.remove("show");
-
-                sendMessage();
-
-                return;
-
-            }
-        
-            else if (e.target.classList.contains("quick-item")){
-        
-                input.value = e.target.textContent.trim();
-        
-                panel.classList.remove("show");
-        
-                sendMessage();
-        
-            }
-        
-        });
-
-// ==========================
-// QUICK ASK
-// ==========================
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    const quickBtn = document.querySelector('[data-action="ask"]');
-    const quickMenu = document.getElementById("quickAskMenu");
-
-    if (quickBtn && quickMenu) {
-
-        quickBtn.onclick = function(e) {
-
-            e.stopPropagation();
-
-            quickMenu.classList.toggle("show");
-
-            console.log("Quick Ask Clicked");
-
-        };
-
-    }
-
-});
-}
-
-});
-
-
-// ==========================
-// GROOM ROBOT DRAG / GRAB FEATURE
-// ==========================
-
-document.addEventListener("DOMContentLoaded", () => {
-
-    const groom = document.getElementById("groom-helper");
-
-    if (!groom) return;
-
-    let isDragging = false;
-    let offsetX = 0;
-    let offsetY = 0;
-
-    function startDrag(e) {
-
-        isDragging = true;
-
-        const rect = groom.getBoundingClientRect();
-
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-        offsetX = clientX - rect.left;
-        offsetY = clientY - rect.top;
-
-        groom.style.transition = "none";
-    }
-
-
-    function moveDrag(e) {
-
-        if (!isDragging) return;
-
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-
-        groom.style.left = (clientX - offsetX) + "px";
-        groom.style.top = (clientY - offsetY) + "px";
-
-        groom.style.right = "auto";
-        groom.style.bottom = "auto";
-    }
-
-
-    function stopDrag() {
-
-        isDragging = false;
-
-        groom.style.transition =
-        "transform .6s ease, opacity .6s ease";
-
-    }
-
-
-    groom.addEventListener("mousedown", startDrag);
-    document.addEventListener("mousemove", moveDrag);
-    document.addEventListener("mouseup", stopDrag);
-
-
-    // Mobile touch
-    groom.addEventListener("touchstart", startDrag);
-    document.addEventListener("touchmove", moveDrag);
-    document.addEventListener("touchend", stopDrag);
-
-});
-
-function groomExpression(expression){
-
-    const head = document.querySelector(".groom-head");
-
-    if(!head) return;
-
-    head.classList.remove(
-        "happy",
-        "thinking",
-        "sleep",
-        "angry"
-    );
-
-    head.classList.add(expression);
-}
-// ==========================
-// GROOM AI VOICE OUTPUT
-// ==========================
-
-async function speakGroom(text){
-
-    const response = await fetch("/voice",{
-
-        method:"POST",
-
-        headers:{
-            "Content-Type":"application/json"
-        },
-
-        body:JSON.stringify({
-            text:text
-        })
-
-    });
-
-
-    const blob = await response.blob();
-
-
-    const audioURL = URL.createObjectURL(blob);
-
-
-    if(currentAudio){
-
-        currentAudio.pause();
-    
-        currentAudio.currentTime = 0;
-    
-    }
-    
-    
-    currentAudio = new Audio(audioURL);
-    
-    
-    currentAudio.onplay = ()=>{
-        startTalking();
-    };
-    
-    
-    currentAudio.onended = ()=>{
-        stopTalking();
-    
-        currentAudio = null;
-    };
-    
-    
-    currentAudio.play();
-
-}
-
-
-
-
-window.speechSynthesis.onvoiceschanged = () => {
-    console.log(
-        "Voices loaded:",
-        window.speechSynthesis.getVoices().length
-    );
-};
-
-let mouthAnimation;
-
-function startMouth() {
-
-    const mouth = document.querySelector(".groom-mouth");
-
-    if (!mouth) return;
-
-    mouthAnimation = setInterval(() => {
-
-        if (mouth.style.height === "25px") {
-            mouth.style.height = "8px";
-        } else {
-            mouth.style.height = "25px";
-        }
-
-    }, 120);
-
-}
-
-
-function stopMouth() {
-
-    clearInterval(mouthAnimation);
-
-    const mouth = document.querySelector(".groom-mouth");
-
-    if (mouth) {
-        mouth.style.height = "8px";
-    }
-
-}
-
-
-
-function startTalking(){
-
-    const head = document.querySelector(".groom-head");
-
-    if(head){
-        head.classList.add("speaking");
-    }
-
-}
-
-
-function stopTalking(){
-
-    const head = document.querySelector(".groom-head");
-
-    if(head){
-        head.classList.remove("speaking");
-    }
-
-}
-
-// ==========================
-// GROOM SONG AUDIO
-// ==========================
-
-async function playSongAudio(lyrics){
-
-    const response = await fetch("/song_voice",{
-
-        method:"POST",
-
-        headers:{
-            "Content-Type":"application/json"
-        },
-
-        body:JSON.stringify({
-            text:lyrics
-        })
-
-    });
-
-
-    const blob = await response.blob();
-
-    const audioURL = URL.createObjectURL(blob);
-
-
-    const audio = document.createElement("audio");
-
-    audio.controls = true;
-
-    audio.src = audioURL;
-
-
-    const message = document.createElement("div");
-
-    message.className = "message bot-row";
-
-
-    message.innerHTML = `
-        <div class="avatar ai-avatar">🚀</div>
-        <div class="bubble bot">
-            🎵 Original Song<br><br>
-            ${marked.parse(lyrics)}
-        </div>
-    `;
-
-
-    message.querySelector(".bubble").appendChild(audio);
-
-
-    chat.appendChild(message);
-
-    scrollBottom();
-
-
-    audio.onplay = ()=>{
-
-        startTalking();
-
-    };
-
-
-    audio.onended = ()=>{
-
-        stopTalking();
-
-    };
-
-
-    audio.play();
-
-}
-
-
-
-// =========================================================
-// GROOM HOME PAGE ACTIONS
-// =========================================================
-function quickPrompt(text) {
-    if (!input) return;
-    input.value = text;
-    input.focus();
-    sendMessage();
-}
-
-window.quickPrompt = quickPrompt;
-
-// Make the welcome AI core act like a real launcher.
-const welcomeCore = document.getElementById("welcomeRocket");
-if (welcomeCore) {
-    welcomeCore.addEventListener("click", () => {
-        input.focus();
-        input.placeholder = "Ask GROOM anything...";
-        welcomeCore.classList.add("core-active");
-        setTimeout(() => welcomeCore.classList.remove("core-active"), 700);
-    });
-}
-
-// Voice input for the homepage composer.
-const micBtn = document.getElementById("micBtn");
-let groomRecognition = null;
-let groomListening = false;
-
-if (micBtn) {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (SpeechRecognition) {
-        groomRecognition = new SpeechRecognition();
-        groomRecognition.lang = navigator.language || "en-US";
-        groomRecognition.interimResults = false;
-        groomRecognition.continuous = false;
-
-        groomRecognition.onstart = () => {
-            groomListening = true;
-            micBtn.classList.add("listening");
-            micBtn.textContent = "●";
-            input.placeholder = "Listening...";
-        };
-
-        groomRecognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            input.value = transcript;
-            input.focus();
-        };
-
-        groomRecognition.onerror = () => {
-            showGroomToast("Voice input could not start. Check microphone permission.");
-        };
-
-        groomRecognition.onend = () => {
-            groomListening = false;
-            micBtn.classList.remove("listening");
-            micBtn.textContent = "⌁";
-            input.placeholder = "Message GROOM AI...";
-        };
-
-        micBtn.addEventListener("click", () => {
-            if (groomListening) {
-                groomRecognition.stop();
-            } else {
-                try { groomRecognition.start(); }
-                catch (_) {}
-            }
-        });
-    } else {
-        micBtn.addEventListener("click", () => {
-            showGroomToast("Voice input is not supported by this browser.");
-        });
-    }
-}
-
-// Small feedback toast used by homepage controls.
-function showGroomToast(message) {
-    let toast = document.getElementById("groom-toast");
-    if (!toast) {
-        toast = document.createElement("div");
-        toast.id = "groom-toast";
-        document.body.appendChild(toast);
-    }
-    toast.textContent = message;
-    toast.classList.add("show");
-    clearTimeout(window.groomToastTimer);
-    window.groomToastTimer = setTimeout(() => toast.classList.remove("show"), 2600);
-}
-window.showGroomToast = showGroomToast;
-
-// Header controls.
-const proPill = document.querySelector(".pro-pill");
-if (proPill) {
-    proPill.addEventListener("click", () => {
-        showGroomToast("PRO mode is coming soon.");
-    });
-}
-
-const modelPill = document.querySelector(".model-pill");
-if (modelPill) {
-    modelPill.addEventListener("click", () => {
-        showGroomToast("GROOM 1.0 is the active model.");
-    });
-}
-
-// Prevent Enter from submitting unexpectedly while keeping the existing
-// sendMessage flow intact.
-if (input) {
-    input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            if (!isGenerating) sendMessage();
-        }
-    });
-}
-
-
-// ======================================================
-// GROOM WEB SEARCH
-// ======================================================
-
-async function groomWebSearch(query) {
-
-    query = (query || "").trim();
-
-    if (!query) {
-        console.log("❌ Empty web search query");
-        return;
-    }
-
-    console.log("🌐 Starting web search:", query);
-
-    // Show thinking message
-    const thinking = addMessage("assistant", "🌐 Searching the web...");
-
-    try {
-
-        const response = await fetch("/web_search", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                query: query
+        # --------------------------------
+        # DEBUG: SHOW WHAT WILL BE SENT
+        # --------------------------------
+
+        print()
+        print("================================")
+        print("🌐 RESULTS SENT TO GEMINI")
+        print("================================")
+        print(web_text)
+        print("================================")
+        print()
+
+        # --------------------------------
+        # GEMINI
+        # --------------------------------
+
+        response = requests.post(
+            GEMINI_URL,
+            json=payload,
+            timeout=30
+        )
+
+        print(
+            "🌐 GEMINI STATUS:",
+            response.status_code
+        )
+
+        response.raise_for_status()
+
+        result = response.json()
+
+        # --------------------------------
+        # GET GEMINI ANSWER
+        # --------------------------------
+
+        candidates = result.get(
+            "candidates",
+            []
+        )
+
+        if not candidates:
+
+            print(
+                "❌ GEMINI SEARCH RESPONSE:",
+                result
+            )
+
+            return jsonify({
+                "success": False,
+                "reply": "Gemini did not return an answer."
             })
-        });
 
-        console.log("🌐 Web search HTTP status:", response.status);
+        reply = (
+            candidates[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+        )
 
-        // Read response safely
-        const data = await response.json();
+        if not reply:
 
-        console.log("🌐 Web search response:", data);
+            return jsonify({
+                "success": False,
+                "reply": "No answer was generated."
+            })
 
-        // Remove thinking message
-        if (thinking && thinking.remove) {
-            thinking.remove();
-        }
+        print("✅ WEB ANSWER GENERATED")
 
-        // ------------------------------------------
-        // SERVER ERROR
-        // ------------------------------------------
+        return jsonify({
 
-        if (!response.ok || !data.success) {
+            "success": True,
 
-            const errorMessage =
-                data.reply ||
-                data.error ||
-                "Web search failed.";
+            "reply": reply,
 
-            addMessage(
-                "assistant",
-                "⚠️ " + errorMessage
-            );
+            "sources": results
 
-            return;
-        }
+        })
 
-        // ------------------------------------------
-        // GEMINI ANSWER
-        // ------------------------------------------
+    except Exception as e:
 
-        const reply = data.reply || "No answer was generated.";
+        print(
+            "❌ WEB SEARCH ROUTE ERROR:",
+            str(e)
+        )
 
-        addMessage(
-            "assistant",
-            reply
-        );
+        return jsonify({
 
-        // ------------------------------------------
-        // SOURCES
-        // ------------------------------------------
+            "success": False,
 
-        const sources = Array.isArray(data.sources)
-            ? data.sources
-            : [];
+            "reply":
+                "Web Search Error: " + str(e)
 
-        if (sources.length > 0) {
+        }), 500
 
-            const sourceHTML = document.createElement("div");
 
-            sourceHTML.className = "web-sources";
 
-            let html = `
-                <div class="web-sources-title">
-                    🌐 Web Sources
-                </div>
-            `;
 
-            sources.forEach((source, index) => {
+# =====================================================
+# WEB SEARCH
+# =====================================================
 
-                if (!source) return;
+def web_search(query):
 
-                const title =
-                    source.title ||
-                    `Source ${index + 1}`;
+    url = "https://html.duckduckgo.com/html/"
 
-                const snippet =
-                    source.snippet ||
-                    "";
-
-                const url =
-                    source.url ||
-                    "";
-
-                html += `
-                    <div class="web-source">
-
-                        <div class="web-source-number">
-                            ${index + 1}
-                        </div>
-
-                        <div class="web-source-content">
-
-                            <div class="web-source-title">
-                                ${escapeHTML(title)}
-                            </div>
-
-                            ${
-                                snippet
-                                    ? `
-                                    <div class="web-source-snippet">
-                                        ${escapeHTML(snippet)}
-                                    </div>
-                                    `
-                                    : ""
-                            }
-
-                            ${
-                                url
-                                    ? `
-                                    <a
-                                        class="web-source-link"
-                                        href="${escapeAttribute(url)}"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                    >
-                                        Open source ↗
-                                    </a>
-                                    `
-                                    : ""
-                            }
-
-                        </div>
-
-                    </div>
-                `;
-            });
-
-            sourceHTML.innerHTML = html;
-
-            // Add sources to the chat
-            const chatContainer =
-                document.querySelector("#chatMessages") ||
-                document.querySelector(".chat-messages") ||
-                document.querySelector("#messages");
-
-            if (chatContainer) {
-
-                chatContainer.appendChild(sourceHTML);
-
-                chatContainer.scrollTop =
-                    chatContainer.scrollHeight;
-            }
-        }
-
-        console.log(
-            "✅ Web search completed:",
-            sources.length,
-            "sources"
-        );
-
-    } catch (error) {
-
-        console.error(
-            "❌ WEB SEARCH ERROR:",
-            error
-        );
-
-        if (thinking && thinking.remove) {
-            thinking.remove();
-        }
-
-        addMessage(
-            "assistant",
-            "⚠️ Web Search Error: " + error.message
-        );
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/120.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml"
     }
-}
+
+    try:
+
+        print("🌐 SEARCHING DUCKDUCKGO:", query)
+
+        response = requests.post(
+            url,
+            headers=headers,
+            data={
+                "q": query
+            },
+            timeout=15
+        )
+
+        response.raise_for_status()
+
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
+        )
+
+        results = []
+
+        # DuckDuckGo result blocks
+        for item in soup.select(".result"):
+
+            if len(results) >= 8:
+                break
+
+            # -----------------------------
+            # TITLE + URL
+            # -----------------------------
+
+            link_element = item.select_one(
+                "a.result__a"
+            )
+
+            if not link_element:
+                continue
+
+            title = link_element.get_text(
+                " ",
+                strip=True
+            )
+
+            link = link_element.get(
+                "href",
+                ""
+            )
+
+            # -----------------------------
+            # DESCRIPTION
+            # -----------------------------
+
+            snippet_element = item.select_one(
+                ".result__snippet"
+            )
+
+            snippet = (
+                snippet_element.get_text(
+                    " ",
+                    strip=True
+                )
+                if snippet_element
+                else ""
+            )
+
+            # Ignore useless results
+            if not title or not link:
+                continue
+
+            results.append({
+                "title": title,
+                "snippet": snippet,
+                "url": link
+            })
+
+        print(
+            "🌐 FOUND RESULTS:",
+            len(results)
+        )
+
+        # Debug the actual results
+        for i, result in enumerate(results, 1):
+
+            print(
+                f"\nSOURCE {i}"
+            )
+
+            print(
+                "TITLE:",
+                result["title"]
+            )
+
+            print(
+                "SNIPPET:",
+                result["snippet"]
+            )
+
+            print(
+                "URL:",
+                result["url"]
+            )
+
+        return results
+
+    except Exception as e:
+
+        print(
+            "❌ SEARCH ERROR:",
+            str(e)
+        )
+
+        return []
+
+# =====================================================
+# IMAGE QUERY CLEANER
+# =====================================================
+
+def clean_image_query(text):
+
+    text = (text or "").lower().strip()
+
+    remove_words = [
+        "show me",
+        "show",
+        "give me",
+        "find me",
+        "find",
+        "image of",
+        "images of",
+        "picture of",
+        "pictures of",
+        "photo of",
+        "photos of",
+        "image",
+        "images",
+        "picture",
+        "pictures",
+        "photo",
+        "photos"
+    ]
+
+    for word in remove_words:
+        text = text.replace(word, "")
+
+    # Remove extra spaces
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
 
 
-// ======================================================
-// HTML SAFETY HELPERS
-// ======================================================
-
-function escapeHTML(value) {
-
-    return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-}
 
 
-function escapeAttribute(value) {
+# ==========================
+# PIXABAY IMAGE SEARCH
+# ==========================
 
-    return String(value || "")
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
+def image_search(query):
 
-const webSearchCard = document.getElementById("webSearchCard");
+    url = "https://pixabay.com/api/"
 
-if (webSearchCard) {
 
-    webSearchCard.addEventListener("click", function () {
+    params = {
 
-        // Put the search mode into the chat input
-        const input =
-            document.getElementById("userInput") ||
-            document.getElementById("messageInput") ||
-            document.querySelector("textarea") ||
-            document.querySelector("input[type='text']");
+        "key":
+        PIXABAY_API_KEY,
 
-        if (!input) {
-            console.error("❌ Chat input not found");
-            return;
+
+        "q":
+        query,
+
+
+        "image_type":
+        "photo",
+
+
+        "per_page":
+        4,
+
+
+        "safesearch":
+        "true"
+
+    }
+
+
+
+    try:
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10
+        )
+
+
+        data = response.json()
+
+
+        images = []
+
+
+        for item in data.get(
+            "hits",
+            []
+        ):
+
+            images.append(
+                item["webformatURL"]
+            )
+
+
+        return images
+
+
+    except Exception:
+
+        return []
+
+
+
+
+
+# ==========================
+# SYSTEM PROMPT
+# ==========================
+
+with open(
+    "system_prompt.txt",
+    "r",
+    encoding="utf-8"
+) as f:
+
+    SYSTEM_PROMPT = f.read()
+
+
+
+# ==========================
+# GEMINI API
+# ==========================
+
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/"
+    "v1beta/models/gemini-3.5-flash-lite:generateContent"
+    f"?key={API_KEY}"
+)
+
+
+GEMINI_VISION_URL = (
+    "https://generativelanguage.googleapis.com/"
+    "v1beta/models/gemini-3.5-flash-lite:generateContent"
+    f"?key={API_KEY}"
+)
+
+
+def update_memory(user_message):
+
+    memory = load_memory()
+
+    text = user_message.lower()
+
+
+    # Name detection
+    if "my name is" in text:
+
+        name = user_message.split(
+            "my name is"
+        )[1].strip()
+
+        memory["facts"].append(
+            "User name is " + name
+        )
+
+
+    # Project detection
+    if "i am building" in text:
+
+        project = user_message.split(
+            "i am building"
+        )[1].strip()
+
+        memory["projects"].append(
+            project
+        )
+
+
+    save_memory(memory)
+
+
+def ask_gemini_for_memory(user_message):
+
+    prompt = f"""
+You are a memory manager.
+
+Read the user's message.
+
+Decide if anything should be remembered.
+
+Remember only useful long-term information:
+- name
+- preferences
+- hobbies
+- projects
+- important facts
+
+Do NOT remember:
+- temporary questions
+- random conversations
+- greetings
+
+Return ONLY JSON.
+
+Format:
+
+{{
+ "save": true,
+ "category": "facts",
+ "memory": "text to remember"
+}}
+
+If nothing important:
+
+{{
+ "save": false
+}}
+
+USER MESSAGE:
+
+{user_message}
+"""
+
+
+    payload = {
+        "contents":[
+            {
+                "parts":[
+                    {
+                        "text":prompt
+                    }
+                ]
+            }
+        ]
+    }
+
+
+    response = requests.post(
+        GEMINI_URL,
+        json=payload,
+        timeout=20
+    )
+
+
+    result = response.json()
+
+
+    text = result["candidates"][0]["content"]["parts"][0]["text"]
+
+
+    text = text.replace(
+        "```json",
+        ""
+    ).replace(
+        "```",
+        ""
+    ).strip()
+
+
+    return json.loads(text)
+
+
+def search_memory(query):
+
+    memory = load_memory()
+
+    results = []
+
+    words = query.lower().split()
+
+
+    for category in memory:
+
+        for item in memory[category]:
+
+            item_lower = item.lower()
+
+            for word in words:
+
+                if word in item_lower:
+
+                    results.append(
+                        item
+                    )
+
+                    break
+
+
+    return results
+
+
+# ==========================
+# CHAT ROUTE
+# ==========================
+
+@app.route("/chat", methods=["POST"])
+def chat():
+
+    try:
+
+        data = request.get_json(silent=True) or {}
+
+        user_message = data.get("message", "").strip()
+        try:
+
+            memory_result = ask_gemini_for_memory(
+                user_message
+            )
+
+
+            if memory_result.get("save"):
+
+                memory = load_memory()
+
+
+                category = memory_result.get(
+                    "category",
+                    "facts"
+                )
+
+
+                memory[category].append(
+                    memory_result["memory"]
+                )
+
+
+                save_memory(memory)
+
+
+                print(
+                    "🧠 MEMORY SAVED:",
+                    memory_result["memory"]
+                )
+
+
+        except Exception as e:
+
+            print(
+                "MEMORY ERROR:",
+                e
+            )
+
+        image = data.get("image")
+        pdf = data.get("pdf")
+        live_image = data.get("live_image")
+
+        if not user_message:
+            return jsonify({
+                "reply": "Please enter a message.",
+                "images": [],
+                "pdf": None,
+                "song": False
+            }), 400
+
+        print()
+        print("================================")
+        print("💬 CHAT:", user_message)
+        print("================================")
+
+        # =====================================================
+        # SONG REQUEST DETECTION
+        # =====================================================
+
+        song_request = False
+
+        song_words = [
+            "sing",
+            "song",
+            "make a song",
+            "create a song",
+            "write a song"
+        ]
+
+        if any(
+            word in user_message.lower()
+            for word in song_words
+        ):
+            song_request = True
+
+        # =====================================================
+        # CHAT SESSION
+        # =====================================================
+
+        conversation_history = session.get(
+            "conversation_history",
+            []
+        )
+
+        # Create new chat
+        if "current_chat" not in session:
+
+            session["current_chat"] = str(
+                uuid.uuid4()
+            )
+
+        # First message becomes title
+        if len(conversation_history) == 0:
+
+            session["current_chat_title"] = (
+                user_message[:40]
+            )
+
+        # Save user message
+        conversation_history.append({
+
+            "role": "user",
+
+            "text": user_message
+
+        })
+
+        session["conversation_history"] = (
+            conversation_history
+        )
+
+        session.modified = True
+
+        save_chat()
+
+        # =====================================================
+        # RECENT CHAT HISTORY
+        # =====================================================
+
+        recent_history = conversation_history[-10:]
+
+        history_text = ""
+
+        for msg in recent_history:
+
+            history_text += (
+                msg["role"]
+                + ": "
+                + msg["text"]
+                + "\n"
+            )
+
+        # =====================================================
+        # AUTOMATIC WEB SEARCH DETECTION
+        # =====================================================
+
+        message_lower = user_message.lower()
+
+        web_keywords = [
+
+            # Current / latest
+            "latest",
+            "recent",
+            "currently",
+            "current",
+            "right now",
+            "today",
+            "tonight",
+            "this week",
+            "this month",
+            "this year",
+
+            # News
+            "news",
+            "breaking news",
+            "latest news",
+            "ai news",
+            "tech news",
+
+            # Time-sensitive
+            "what happened",
+            "what's happening",
+            "whats happening",
+            "update",
+            "updates",
+
+            # Prices
+            "price",
+            "prices",
+            "cost",
+            "worth",
+            "stock price",
+            "crypto price",
+            "bitcoin price",
+            "ethereum price",
+
+            # Sports
+            "score",
+            "scores",
+            "live score",
+            "match today",
+            "game today",
+            "results today",
+
+            # Weather
+            "weather",
+            "temperature",
+            "forecast",
+
+            # People / companies / products
+            "who is the ceo",
+            "new version",
+            "new update",
+            "release date",
+            "released",
+            "launch",
+            "launched",
+
+            # Explicit search requests
+            "search the web",
+            "search web",
+            "search online",
+            "look it up",
+            "look this up",
+            "google this",
+            "find online",
+            "find on the internet",
+            "browse the web",
+            "browse internet",
+            "check online",
+            "check the internet"
+        ]
+
+        needs_web_search = any(
+            keyword in message_lower
+            for keyword in web_keywords
+        )
+
+        # Explicit requests always trigger search
+        explicit_web_request = any(
+            keyword in message_lower
+            for keyword in [
+                "search the web",
+                "search web",
+                "search online",
+                "look it up",
+                "look this up",
+                "find online",
+                "find on the internet",
+                "browse the web",
+                "browse internet",
+                "check online",
+                "check the internet"
+            ]
+        )
+
+        if explicit_web_request:
+
+            needs_web_search = True
+
+        # =====================================================
+        # WEB SEARCH
+        # =====================================================
+
+        web_results = []
+
+        if needs_web_search:
+
+            print()
+            print("🌐 AUTOMATIC WEB SEARCH")
+            print("🌐 QUERY:", user_message)
+
+            try:
+
+                web_results = web_search(
+                    user_message
+                )
+
+                print(
+                    "🌐 WEB RESULTS:",
+                    len(web_results)
+                )
+
+            except Exception as e:
+
+                print(
+                    "❌ WEB SEARCH FAILED:",
+                    e
+                )
+
+                web_results = []
+                
+
+        # ==========================
+        # LOAD USER MEMORY
+        # ==========================
+
+        user_memory = load_memory()
+
+        memory_text = ""
+
+        if user_memory:
+
+            memory_text = """
+        USER MEMORY:
+
+        Facts:
+        {facts}
+
+        Preferences:
+        {preferences}
+
+        Projects:
+        {projects}
+
+        """.format(
+                facts="\n".join(user_memory["facts"]),
+                preferences="\n".join(user_memory["preferences"]),
+                projects="\n".join(user_memory["projects"])
+            )
+
+        relevant_memory = search_memory(
+            user_message
+        )
+
+
+        memory_text = ""
+
+        if relevant_memory:
+
+            memory_text = """
+
+        Relevant memories about this user:
+
+        """ + "\n".join(relevant_memory)
+
+
+
+        identity_rule = """
+
+        GROOM IDENTITY RULE:
+
+        If the user asks:
+        "Who developed you?"
+        "Who created you?"
+        "Who made you?"
+        "Who is your developer?"
+
+        You MUST answer:
+
+        "I was developed by Rupinder Kumar."
+
+        Never ask the user's name.
+        Never give another name.
+
+        """
+
+        # =====================================================
+        # BUILD BASE PROMPT
+        # =====================================================
+
+        prompt = (
+        SYSTEM_PROMPT
+        +
+        memory_text
+        +
+        identity_rule
+            +
+            """
+
+You are GROOM AI.
+
+IMPORTANT WEB SEARCH RULE:
+
+If LIVE WEB SEARCH RESULTS are provided below,
+use them to answer the user's question.
+
+Do NOT say:
+"I cannot browse the internet."
+
+Do NOT say:
+"I don't have real-time browsing."
+
+Do NOT claim that you personally browsed websites.
+
+The server performed the search and provided
+the search results to you.
+
+Only use information supported by the supplied
+web search results.
+
+If the results are insufficient,
+say that the available search results
+were insufficient.
+
+Do not invent current information.
+
+SONG RULE:
+
+If the user asks you to sing or create a song,
+create an original song.
+
+Return only the lyrics.
+
+Do not reproduce copyrighted songs.
+
+PDF RULE:
+
+If the user asks for a PDF,
+provide the content normally.
+
+The application will create the PDF.
+
+Never say:
+"I cannot create PDF."
+
+IMAGE RULE:
+
+Images are handled by the application.
+
+Never say:
+"I cannot show images."
+
+LIVE CAMERA RULE:
+
+If a live camera image is attached and the
+user asks about what they are showing,
+analyze the image and answer based on what
+you actually see.
+
+"""
+            +
+            "\nConversation:\n"
+            +
+            history_text
+            +
+            "\nUser:\n"
+            +
+            user_message
+        )
+
+        # =====================================================
+        # ADD WEB RESULTS TO PROMPT
+        # =====================================================
+
+        if web_results:
+
+            web_text = ""
+
+            for i, result in enumerate(
+                web_results,
+                1
+            ):
+
+                web_text += f"""
+
+SOURCE {i}
+
+TITLE:
+{result.get("title", "")}
+
+DESCRIPTION:
+{result.get("snippet", "")}
+
+URL:
+{result.get("url", "")}
+
+-------------------------
+"""
+
+            prompt += """
+
+LIVE WEB SEARCH RESULTS:
+
+""" + web_text
+
+        # =====================================================
+        # LIVE CAMERA INSTRUCTION
+        # =====================================================
+
+        if live_image:
+
+            print(
+                "📷 Live camera image received!"
+            )
+
+            prompt += """
+
+LIVE CAMERA IS ACTIVE.
+
+The user has shared a live camera frame.
+
+If the user's question refers to something
+they are showing, such as:
+
+"What do you see?"
+"What is this?"
+"Read this"
+"Describe this"
+"Solve this"
+"Can you identify this?"
+
+analyze the attached camera image.
+
+Do not ignore the image.
+
+"""
+
+        else:
+
+            print(
+                "❌ No live camera image."
+            )
+
+        # =====================================================
+        # PDF PROCESSING
+        # =====================================================
+
+        if pdf:
+
+            try:
+
+                header, pdf_data = pdf.split(
+                    ",",
+                    1
+                )
+
+                pdf_bytes = base64.b64decode(
+                    pdf_data
+                )
+
+                reader = PdfReader(
+                    io.BytesIO(pdf_bytes)
+                )
+
+                pdf_text = ""
+
+                for page in reader.pages:
+
+                    txt = page.extract_text()
+
+                    if txt:
+
+                        pdf_text += (
+                            txt + "\n"
+                        )
+
+                prompt += (
+                    "\n\nPDF CONTENT:\n"
+                    + pdf_text
+                )
+
+            except Exception as e:
+
+                print(
+                    "❌ PDF ERROR:",
+                    e
+                )
+
+        # =====================================================
+        # GEMINI PARTS
+        # =====================================================
+
+        parts = [
+
+            {
+                "text": prompt
+            }
+
+        ]
+
+        # =====================================================
+        # NORMAL IMAGE
+        # =====================================================
+
+        if image:
+
+            try:
+
+                header, img_data = image.split(
+                    ",",
+                    1
+                )
+
+                mime = (
+                    header
+                    .split(";")[0]
+                    .split(":")[1]
+                )
+
+                parts.append({
+
+                    "inline_data": {
+
+                        "mime_type": mime,
+
+                        "data": img_data
+
+                    }
+
+                })
+
+                print(
+                    "✅ Image added to Gemini"
+                )
+
+            except Exception as e:
+
+                print(
+                    "❌ IMAGE ERROR:",
+                    e
+                )
+
+        # =====================================================
+        # LIVE CAMERA IMAGE
+        # =====================================================
+
+        if live_image:
+
+            try:
+
+                header, img_data = (
+                    live_image.split(
+                        ",",
+                        1
+                    )
+                )
+
+                mime = (
+                    header
+                    .split(";")[0]
+                    .split(":")[1]
+                )
+
+                parts.append({
+
+                    "inline_data": {
+
+                        "mime_type": mime,
+
+                        "data": img_data
+
+                    }
+
+                })
+
+                print(
+                    "✅ Live image added to Gemini"
+                )
+
+            except Exception as e:
+
+                print(
+                    "❌ LIVE IMAGE ERROR:",
+                    e
+                )
+
+        # =====================================================
+        # GEMINI PAYLOAD
+        # =====================================================
+
+        payload = {
+
+            "contents": [
+
+                {
+
+                    "parts": parts
+
+                }
+
+            ]
+
         }
 
-        input.value = "";
+        # =====================================================
+        # GEMINI REQUEST
+        # =====================================================
 
-        input.placeholder = "Search the web...";
+        try:
 
-        input.focus();
+            print(
+                "🤖 START GEMINI"
+            )
 
-        // Mark web search mode
-        window.groomWebSearchMode = true;
+            start_time = time.time()
 
-        console.log("🌐 Web Search mode enabled");
-    });
-}
+            # IMPORTANT:
+            # Removed the old time.sleep(3)
 
-const groomLiveBtn = document.getElementById("groomLiveBtn");
+            response = requests.post(
 
-if (groomLiveBtn) {
-    groomLiveBtn.addEventListener("click", () => {
-        window.location.href = "/live";
-    });
-}
+                GEMINI_URL,
+
+                json=payload,
+
+                timeout=30
+
+            )
+
+            print(
+                "🤖 GEMINI STATUS:",
+                response.status_code
+            )
+
+            response.raise_for_status()
+
+            elapsed = (
+                time.time()
+                - start_time
+            )
+
+            print(
+                "🤖 GEMINI TIME:",
+                round(elapsed, 2),
+                "seconds"
+            )
+
+        except Exception as e:
+
+            print(
+                "❌ GEMINI ERROR:",
+                e
+            )
+
+            return jsonify({
+
+                "reply":
+                    "⚠️ Gemini Error: "
+                    + str(e),
+
+                "images": [],
+
+                "pdf": None,
+
+                "song": song_request
+
+            }), 500
+
+        # =====================================================
+        # GEMINI RESPONSE
+        # =====================================================
+
+        try:
+
+            result = response.json()
+
+            print(
+                "🤖 GEMINI RESPONSE RECEIVED"
+            )
+
+            candidates = result.get(
+                "candidates",
+                []
+            )
+
+            if not candidates:
+
+                print(
+                    "❌ GEMINI RAW:",
+                    result
+                )
+
+                reply = (
+                    "⚠️ Gemini did not "
+                    "return an answer."
+                )
+
+            else:
+
+                content = candidates[0].get(
+                    "content",
+                    {}
+                )
+
+                response_parts = (
+                    content.get(
+                        "parts",
+                        []
+                    )
+                )
+
+                if response_parts:
+
+                    reply = response_parts[0].get(
+                        "text",
+                        ""
+                    )
+
+                else:
+
+                    reply = ""
+
+                if not reply:
+
+                    reply = (
+                        "⚠️ No answer "
+                        "was generated."
+                    )
+
+        except Exception as e:
+
+            print(
+                "❌ REPLY ERROR:",
+                e
+            )
+
+            return jsonify({
+
+                "reply":
+                    "⚠️ No response "
+                    "from Gemini",
+
+                "images": [],
+
+                "pdf": None,
+
+                "song": song_request
+
+            }), 500
+
+        # =====================================================
+        # PDF CREATION
+        # =====================================================
+
+        pdf_link = None
+
+        pdf_words = [
+
+            "pdf",
+            "make pdf",
+            "create pdf",
+            "send pdf",
+            "download pdf"
+
+        ]
+
+        if any(
+            word in message_lower
+            for word in pdf_words
+        ):
+
+            try:
+
+                pdf_link = create_pdf(
+                    reply
+                )
+
+                print(
+                    "📄 PDF CREATED:",
+                    pdf_link
+                )
+
+            except Exception as e:
+
+                print(
+                    "❌ PDF ERROR:",
+                    e
+                )
+
+        # =====================================================
+        # IMAGE SEARCH / AI IMAGE
+        # =====================================================
+
+        images = []
+
+        image_words = [
+            "image",
+            "images",
+            "photo",
+            "photos",
+            "picture",
+            "pictures",
+            "show me",
+            "wallpaper",
+            "logo"
+        ]
+
+        message_lower = user_message.lower()
+
+        if any(
+            word in message_lower
+            for word in image_words
+        ):
+
+            try:
+
+                query = clean_image_query(
+                    user_message
+                )
+
+                print("🖼️ IMAGE QUERY:", query)
+
+                # Try AI image generation first
+                ai_image = generate_ai_image(
+                    query
+                )
+
+                if ai_image:
+
+                    images = [
+                        ai_image
+                    ]
+
+                    print("✅ AI IMAGE GENERATED")
+
+                else:
+
+                    print(
+                        "⚠️ AI IMAGE RETURNED NOTHING"
+                    )
+
+                    # Fallback to Pixabay
+                    images = image_search(
+                        query
+                    )
+
+            except Exception as e:
+
+                print(
+                    "❌ AI IMAGE FAILED:",
+                    e
+                )
+
+                # Fallback to Pixabay
+                try:
+
+                    query = clean_image_query(
+                        user_message
+                    )
+
+                    images = image_search(
+                        query
+                    )
+
+                    print(
+                        "✅ PIXABAY FALLBACK:",
+                        len(images),
+                        "images"
+                    )
+
+                except Exception as image_error:
+
+                    print(
+                        "❌ IMAGE SEARCH ERROR:",
+                        image_error
+                    )
+
+                    images = []
+
+        # =====================================================
+        # SAVE ASSISTANT MESSAGE
+        # =====================================================
+
+        conversation_history = session.get(
+            "conversation_history",
+            []
+        )
+
+        conversation_history.append({
+
+            "role": "assistant",
+
+            "text": reply
+
+        })
+
+        session["conversation_history"] = (
+            conversation_history
+        )
+
+        session.modified = True
+
+        save_chat()
+
+        # =====================================================
+        # FINAL RESPONSE
+        # =====================================================
+
+        print(
+            "✅ FINAL RESPONSE SENT"
+        )
+
+        return jsonify({
+
+            "reply": reply,
+
+            "images": images,
+
+            "pdf": pdf_link,
+
+            "song": song_request,
+
+            "web_search": needs_web_search,
+
+            "sources": web_results
+
+        })
+
+    except Exception as e:
+
+        print(
+            "❌ CHAT ROUTE ERROR:",
+            e
+        )
+
+        return jsonify({
+
+            "reply":
+                "⚠️ Chat Error: "
+                + str(e),
+
+            "images": [],
+
+            "pdf": None,
+
+            "song": False,
+
+            "web_search": False,
+
+            "sources": []
+
+        }), 500
+
+
+# ==========================
+# CHAT LIST
+# ==========================
+
+@app.route("/chat_list")
+def chat_list():
+
+    folder = get_user_folder()
+
+    chats = []
+
+    if not os.path.exists(folder):
+        return jsonify([])
+
+    for file in os.listdir(folder):
+
+        if file.endswith(".json"):
+
+            path = os.path.join(folder, file)
+
+            try:
+
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                chats.append({
+                    "id": file,
+                    "title": data.get("title", "New Chat")
+                })
+
+            except Exception as e:
+
+                print("CHAT LIST ERROR:", e)
+
+    chats.reverse()
+
+    return jsonify(chats)
+
+
+# ==========================
+# LOAD CHAT
+# ==========================
+
+@app.route("/load_chat/<chat_id>")
+def load_chat(chat_id):
+
+
+    path = os.path.join(
+        get_user_folder(),
+        chat_id
+    )
+
+
+    if not os.path.exists(path):
+
+        return jsonify([])
+
+
+
+    try:
+
+        with open(
+            path,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            data = json.load(f)
+
+
+
+        session["conversation_history"] = (
+            data.get(
+                "messages",
+                []
+            )
+        )
+
+
+        session["current_chat"] = (
+            chat_id.replace(
+                ".json",
+                ""
+            )
+        )
+
+
+        session["current_chat_title"] = (
+            data.get(
+                "title",
+                "New Chat"
+            )
+        )
+
+
+
+        return jsonify(
+            data.get(
+                "messages",
+                []
+            )
+        )
+
+
+    except Exception as e:
+
+
+        print(
+            "LOAD ERROR:",
+            e
+        )
+
+
+        return jsonify([])
+
+# ==========================
+# DELETE CHAT
+# ==========================
+
+@app.route(
+    "/delete_chat/<chat_id>",
+    methods=["POST"]
+)
+
+def delete_chat(chat_id):
+
+
+    path = os.path.join(
+        get_user_folder(),
+        chat_id
+    )
+
+
+    if os.path.exists(path):
+
+        os.remove(path)
+
+
+
+    if session.get(
+        "current_chat"
+    ) == chat_id.replace(
+        ".json",
+        ""
+    ):
+
+
+        session["conversation_history"] = []
+
+        session["current_chat"] = str(
+            uuid.uuid4()
+        )
+
+        session["current_chat_title"] = (
+            "New Chat"
+        )
+
+
+
+    return jsonify({
+
+        "success": True
+
+    })
+
+# ==========================
+# NEW CHAT
+# ==========================
+
+@app.route(
+    "/new_chat",
+    methods=["POST"]
+)
+
+def new_chat():
+
+
+    session["conversation_history"] = []
+
+
+    session["current_chat"] = str(
+        uuid.uuid4()
+    )
+
+
+    session["current_chat_title"] = (
+        "New Chat"
+    )
+
+
+    return jsonify({
+
+        "success": True
+
+    })
+
+# ==========================
+# VOICE
+# ==========================
+
+@app.route(
+    "/voice",
+    methods=["POST"]
+)
+
+def voice():
+
+    st=time.time()
+
+    # after audio generation
+
+    print("TTS time:", time.time()-st)
+
+    text = request.json.get(
+        "text"
+    )
+
+
+    if not text:
+
+        return jsonify({
+
+            "error":
+            "No text"
+
+        })
+
+
+
+    async def generate():
+
+
+        communicate = edge_tts.Communicate(
+            text[:800],
+            "en-US-AriaNeural"
+        )
+
+
+        audio = io.BytesIO()
+
+
+
+        async for chunk in communicate.stream():
+
+
+            if chunk["type"] == "audio":
+
+                audio.write(
+                    chunk["data"]
+                )
+
+
+        audio.seek(0)
+
+
+        return audio
+
+
+
+    audio = asyncio.run(
+        generate()
+    )
+
+
+
+    return app.response_class(
+
+        audio.read(),
+
+        mimetype="audio/mpeg"
+
+    )
+
+
+
+@app.route("/song_voice", methods=["POST"])
+def song_voice():
+
+    try:
+
+        text = request.json.get("text")
+
+        if not text:
+            return jsonify({
+                "error": "No lyrics"
+            }), 400
+
+
+        async def generate():
+
+            communicate = edge_tts.Communicate(
+                text[:800],
+                "en-US-AriaNeural"
+            )
+
+            audio = io.BytesIO()
+
+            async for chunk in communicate.stream():
+
+                if chunk["type"] == "audio":
+                    audio.write(chunk["data"])
+
+
+            audio.seek(0)
+
+            return audio
+
+
+        audio = asyncio.run(generate())
+
+
+        return app.response_class(
+            audio.read(),
+            mimetype="audio/mpeg"
+        )
+
+
+    except Exception as e:
+
+        print("SONG VOICE ERROR:", str(e))
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+
+from flask import request, jsonify
+
+
+from PIL import Image
+
+
+# @app.route("/live_vision", methods=["POST"])
+# def live_vision():
+
+#     image_data = request.json["image"]
+
+#     image_data = image_data.split(",")[1]
+
+#     image_bytes = base64.b64decode(image_data)
+
+#     image = Image.open(io.BytesIO(image_bytes))
+
+#     image.save("live_frame.jpg")   # for testing
+
+#     return jsonify({
+#         "reply":"Image received"
+#     })
+
+
+
+
+@app.route("/live_vision", methods=["POST"])
+def live_vision():
+
+    try:
+
+        data = request.json
+
+        image = data.get("image")
+        question = data.get(
+            "question",
+            "What do you see?"
+        )
+
+        print("✅ Vision request received")
+
+
+        if not image:
+            return jsonify({
+                "success":False,
+                "reply":"No image received"
+            })
+
+
+        image_data = image.split(",")[1]
+
+
+        payload = {
+
+            "contents":[
+                {
+                    "parts":[
+
+                        {
+                            "text": question
+                        },
+
+                        {
+                            "inline_data":{
+                                "mime_type":"image/jpeg",
+                                "data":image_data
+                            }
+                        }
+
+                    ]
+                }
+            ]
+
+        }
+
+        response = requests.post(
+            GEMINI_VISION_URL,
+            json=payload,
+            timeout=30
+        )
+
+        print(response.status_code)
+        print(response.text)
+
+        result = response.json()
+
+
+
+
+        print("GEMINI RAW:", result)
+
+
+
+        result = response.json()
+
+        print("STATUS:", response.status_code)
+        print("GEMINI RAW:", result)
+
+        if "candidates" in result:
+            reply = result["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            reply = str(result)
+
+
+        print("VISION ANSWER:", reply)
+
+
+
+        return jsonify({
+
+            "success":True,
+            "reply":reply
+
+        })
+
+
+    except Exception as e:
+
+        print("VISION ERROR:", e)
+
+        return jsonify({
+
+            "success":False,
+            "reply":str(e)
+
+        })
+
+
+@app.route("/speech_to_text", methods=["POST"])
+def speech_to_text():
+
+    try:
+        audio = request.files.get("audio")
+
+        if not audio:
+            return jsonify({
+                "success": False,
+                "error": "No audio received"
+            })
+
+
+        audio_bytes = audio.read()
+
+        print("Filename:", audio.filename)
+        print("Bytes:", len(audio_bytes))
+
+
+        if len(audio_bytes) < 10000:
+            return jsonify({
+                "success": False,
+                "error": "Audio too short"
+            })
+
+
+        headers = {
+            "Authorization": f"Token {DEEPGRAM_API_KEY}",
+            "Content-Type": "audio/webm"
+        }
+
+
+        response = requests.post(
+            "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true",
+            headers=headers,
+            data=audio_bytes,
+            timeout=30
+        )
+
+
+        result = response.json()
+
+        print(result)
+
+
+        if "results" in result:
+
+            text = result["results"]["channels"][0]["alternatives"][0]["transcript"]
+
+            print("🎤 USER SAID:", text)
+
+            return jsonify({
+                "success": True,
+                "text": text
+            })
+
+
+        return jsonify({
+            "success": False,
+            "error": result
+        })
+
+
+    except Exception as e:
+
+        print("DEEPGRAM CRASH:", e)
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
+
+
+@app.route("/live")
+def live():
+    return render_template("live.html")
+
+
+# ==========================
+# NEW GEMINI CAMERA TEST
+# ==========================
+
+@app.route("/gemini_call")
+def gemini_call():
+
+    return render_template(
+        "gemini_call.html"
+    )
+
+
+
+@app.route("/gemini_camera", methods=["POST"])
+def gemini_camera():
+
+    try:
+
+        data = request.json
+
+        image = data.get("image")
+
+
+        if not image:
+
+            return jsonify({
+                "reply":"No image received"
+            })
+
+
+        image_data = image.split(",")[1]
+
+
+        payload = {
+
+            "contents":[
+                {
+                    "parts":[
+
+                        {
+                            "text":
+                            "Describe what you see in this camera image."
+                        },
+
+                        {
+                            "inline_data":{
+                                "mime_type":
+                                "image/jpeg",
+
+                                "data":
+                                image_data
+                            }
+                        }
+
+                    ]
+                }
+            ]
+
+        }
+
+
+        response = requests.post(
+
+            GEMINI_VISION_URL,
+
+            json=payload,
+
+            timeout=30
+
+        )
+
+
+        result = response.json()
+
+
+        print(
+            "GEMINI CAMERA:",
+            result
+        )
+
+
+        if "candidates" in result:
+
+            reply = (
+                result["candidates"][0]
+                ["content"]
+                ["parts"][0]
+                ["text"]
+            )
+
+        else:
+
+            reply = str(result)
+
+
+
+        return jsonify({
+
+            "reply":reply
+
+        })
+
+
+    except Exception as e:
+
+        print(
+            "CAMERA ERROR:",
+            e
+        )
+
+        return jsonify({
+
+            "reply":
+            str(e)
+
+        })
+
+@app.route("/test_memory")
+def test_memory():
+
+    memory = load_memory()
+
+    memory["facts"].append(
+        "User is testing Groom memory"
+    )
+
+    save_memory(memory)
+
+    return jsonify(memory)
+
+
+
+
+
+
+
+if __name__ == "__main__":
+    socketio.run(app, debug=True)
+
+# init_memory()
