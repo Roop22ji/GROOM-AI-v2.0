@@ -43,7 +43,7 @@ load_dotenv()
 
 API_KEY = os.environ["GEMINI_API_KEY"]
 
-print("GEMINI KEY START:", API_KEY[:15])
+print("Gemini key loaded:", bool(GEMINI_API_KEY))
 
 PIXABAY_API_KEY = os.environ["PIXABAY_API_KEY"]
 
