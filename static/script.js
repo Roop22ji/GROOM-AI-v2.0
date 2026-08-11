@@ -1544,3 +1544,11 @@ if (webSearchCard) {
         console.log("🌐 Web Search mode enabled");
     });
 }
+
+const groomLiveBtn = document.getElementById("groomLiveBtn");
+
+if (groomLiveBtn) {
+    groomLiveBtn.addEventListener("click", () => {
+        window.location.href = "/live";
+    });
+}
